@@ -123,10 +123,10 @@ class ExifToolRunnerArgumentTests(unittest.TestCase):
                 "-overwrite_original",
                 "-P",
                 f"-XMP-dc:Subject+={marker.MARKER}",
-                str(self.media.resolve()),
             ],
-            argument_lines,
+            argument_lines[:-1],
         )
+        self.assertTrue(Path(argument_lines[-1]).samefile(self.media))
         self.assertNotIn("Microsoft:Category", keyword["input"].decode("utf-8"))
         self.assertIsNone(keyword["timeout"])
 
@@ -158,10 +158,10 @@ class ExifToolRunnerArgumentTests(unittest.TestCase):
                 "-G1",
                 "-s",
                 "-XMP-dc:Subject",
-                str(self.media.resolve()),
             ],
-            argument_lines,
+            argument_lines[:-1],
         )
+        self.assertTrue(Path(argument_lines[-1]).samefile(self.media))
         self.assertNotIn("Microsoft:Category", keyword["input"].decode("utf-8"))
 
     def test_raw_xmp_preserves_original_bytes_for_xml_encoding_detection(self) -> None:
