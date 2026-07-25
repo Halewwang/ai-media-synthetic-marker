@@ -716,11 +716,15 @@ def assemble_release_stage(
 
 def smoke_test_application(stage: Path) -> None:
     executable = stage / APP_EXE_NAME
+    report_path = stage.parent / "application-self-test.txt"
+    environment = os.environ.copy()
+    environment["AI_MEDIA_MARKER_SELF_TEST_REPORT"] = str(report_path)
     print("\n[4/7] 执行主程序无界面启动自检……", flush=True)
     try:
         completed = subprocess.run(
             [str(executable), "--self-test"],
             cwd=stage,
+            env=environment,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -730,9 +734,15 @@ def smoke_test_application(stage: Path) -> None:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise BuildError(f"主程序无界面启动自检失败：{exc}") from exc
+    report = (
+        report_path.read_text(encoding="utf-8", errors="replace").strip()
+        if report_path.is_file()
+        else "（主程序没有生成自检诊断报告）"
+    )
+    print(report, flush=True)
     if completed.returncode != 0:
         raise BuildError(
-            f"主程序无界面启动自检失败，退出码 {completed.returncode}。"
+            f"主程序无界面启动自检失败，退出码 {completed.returncode}：{report}"
         )
 
 

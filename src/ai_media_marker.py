@@ -30,6 +30,7 @@ VERIFICATION_FIELD = "XMP-dc:Subject"
 VERIFICATION_STRUCTURE = "rdf:Bag/rdf:li"
 MODE_MARK = "标记并验证"
 MODE_VERIFY = "只读验证"
+SELF_TEST_REPORT_ENV = "AI_MEDIA_MARKER_SELF_TEST_REPORT"
 
 if getattr(sys, "frozen", False):
     APP_DIR = Path(sys.executable).resolve().parent
@@ -1165,16 +1166,38 @@ def write_startup_error(error: BaseException) -> Path | None:
         return None
 
 
+def write_self_test_report(message: str) -> None:
+    report_target = os.environ.get(SELF_TEST_REPORT_ENV)
+    if not report_target:
+        return
+    try:
+        Path(report_target).write_text(message, encoding="utf-8")
+    except Exception:
+        pass
+
+
 def run_self_test() -> int:
     """Verify the frozen Python/Tcl runtime and adjacent ExifTool without a GUI."""
 
+    details: list[str] = []
     try:
         interpreter = tk.Tcl()
-        if not interpreter.eval("info patchlevel").startswith("8.6."):
+        tcl_version = interpreter.eval("info patchlevel")
+        details.append(f"Tcl={tcl_version}")
+        if not tcl_version.startswith("8.6."):
+            details.append("Result=unsupported Tcl version")
+            write_self_test_report("\n".join(details) + "\n")
             return 1
         version = ExifToolRunner(EXIFTOOL_PATH).ensure_available()
+        details.append(f"ExifTool={version or '(empty)'}")
+        details.append(f"ExifToolPath={EXIFTOOL_PATH}")
+        details.append(f"Result={'ok' if version else 'empty ExifTool version'}")
+        write_self_test_report("\n".join(details) + "\n")
         return 0 if version else 1
     except Exception:
+        details.append("Result=exception")
+        details.append(traceback.format_exc())
+        write_self_test_report("\n".join(details))
         return 1
 
 

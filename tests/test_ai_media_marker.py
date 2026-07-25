@@ -471,8 +471,35 @@ class ScanAndCsvTests(unittest.TestCase):
             with log_path.open(encoding="utf-8-sig", newline="") as handle:
                 rows = list(csv.reader(handle))
 
-            self.assertTrue(rows[1][0].startswith("'="))
-            self.assertTrue(rows[1][10].startswith("'+"))
+        self.assertTrue(rows[1][0].startswith("'="))
+        self.assertTrue(rows[1][10].startswith("'+"))
+
+
+class SelfTestDiagnosticsTests(unittest.TestCase):
+    def test_self_test_writes_runtime_versions_to_requested_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            report_path = Path(temporary) / "自检报告.txt"
+            interpreter = mock.Mock()
+            interpreter.eval.return_value = "8.6.14"
+            with (
+                mock.patch.dict(
+                    marker.os.environ,
+                    {marker.SELF_TEST_REPORT_ENV: str(report_path)},
+                ),
+                mock.patch.object(marker.tk, "Tcl", return_value=interpreter),
+                mock.patch.object(
+                    marker.ExifToolRunner,
+                    "ensure_available",
+                    return_value="13.59",
+                ),
+            ):
+                return_code = marker.run_self_test()
+
+            self.assertEqual(0, return_code)
+            report = report_path.read_text(encoding="utf-8")
+            self.assertIn("Tcl=8.6.14", report)
+            self.assertIn("ExifTool=13.59", report)
+            self.assertIn("Result=ok", report)
 
 
 class VersionConsistencyTests(unittest.TestCase):
