@@ -1,0 +1,107 @@
+name: Build Windows release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build portable Windows package
+    runs-on: windows-2022
+    timeout-minutes: 30
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.0"
+          architecture: "x64"
+          cache: pip
+          cache-dependency-path: requirements-build.lock
+
+      - name: Install locked build dependencies
+        shell: pwsh
+        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
+
+      - name: Verify release tag matches project version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $expectedTag = python -c "import tomllib; print('v' + tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
+          if ($env:RELEASE_TAG -ne $expectedTag) {
+            throw "Tag $env:RELEASE_TAG does not match project version $expectedTag."
+          }
+
+      - name: Fetch and verify locked ExifTool
+        shell: pwsh
+        run: python scripts/fetch_exiftool.py
+
+      - name: Build and verify release package
+        shell: pwsh
+        run: python scripts/build_release.py
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ai-media-synthetic-marker-windows-${{ github.run_number }}
+          path: |
+            dist/*.zip
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish tagged release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified build artifacts
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: ai-media-synthetic-marker-windows-${{ github.run_number }}
+          path: dist
+
+      - name: Create GitHub Release for tag
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          $zipFiles = @(Get-ChildItem -LiteralPath dist -Filter '*.zip' -File)
+          if ($zipFiles.Count -ne 1) {
+            throw "Expected exactly one ZIP in dist, found $($zipFiles.Count)."
+          }
+
+          $checksumPath = Join-Path $PWD 'dist\SHA256SUMS.txt'
+          if (-not (Test-Path -LiteralPath $checksumPath -PathType Leaf)) {
+            throw "Missing checksum file: $checksumPath"
+          }
+
+          $zipPath = $zipFiles[0].FullName
+          gh release create $env:RELEASE_TAG $zipPath $checksumPath `
+            --verify-tag `
+            --generate-notes `
+            --title $env:RELEASE_TAG

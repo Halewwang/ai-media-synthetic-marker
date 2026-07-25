@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Build and release output
+/build/
+/dist/
+*.toc
+*.log
+
+# Local ExifTool runtime (the lock file and README remain tracked)
+/runtime/exiftool/*
+!/runtime/exiftool/README.md
+
+# Local developer media and CSV records
+/dev/待标记/*
+!/dev/待标记/.gitkeep
+/dev/运行记录/*
+!/dev/运行记录/.gitkeep
+
+# Existing private and legacy workspace content
+/image/
+/video/
+/exiftool/
+/快速教学版/
+/便携EXE版/
+/AI人物媒体标记工具-便携EXE版.zip
+/.exiftool-download-check.txt
+
+# ExifTool backups and local-only fixtures
+*_original
+/local-fixtures/
+/tests/local-fixtures/
+
+# Privacy guard: media and runtime records are opt-in, never committed by accident
+*.jpg
+*.jpeg
+*.png
+*.mp4
+*.csv
+!docs/assets/**/*.png
+
+# Local configuration and editors
+.env
+.env.*
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
