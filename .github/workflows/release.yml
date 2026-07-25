@@ -37,7 +37,10 @@ jobs:
 
       - name: Install locked build dependencies
         shell: pwsh
-        run: python -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
+        run: >-
+          python -m pip install --require-hashes
+          --only-binary=:all:
+          -r requirements-build.lock
 
       - name: Verify release tag matches project version
         if: startsWith(github.ref, 'refs/tags/')
