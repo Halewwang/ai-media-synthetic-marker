@@ -114,7 +114,7 @@ MP4 正确写入 XMP-dc:Subject 后，Windows“属性 → 详细信息 → 标�
 - 面向 Windows 64 位系统。
 - 使用者无需安装 Python，也无需另外安装 ExifTool。
 - 请不要单独移动 EXE；整个解压出的
-  “AI人物媒体标记工具-v1.0.0”文件夹应一起移动或复制。
+  “ai-media-synthetic-marker-v1.0.0”文件夹应一起移动或复制。
 - 请保持 EXE、“待标记”“运行记录”和“exiftool”位于同一目录。
 
 九、范围说明

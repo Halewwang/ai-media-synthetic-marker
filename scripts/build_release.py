@@ -1027,7 +1027,7 @@ def main() -> int:
         ) as temporary:
             work_root = Path(temporary)
             executable = build_executable(work_root, version, source_date_epoch)
-            package_name = f"{APP_NAME}-v{version}"
+            package_name = f"{ASSET_PREFIX}-v{version}"
             package_root = work_root / package_name
             assemble_release_stage(package_root, executable, license_sources)
 

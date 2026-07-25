@@ -37,7 +37,7 @@ def write_placeholder(path: Path, data: bytes = b"test placeholder") -> None:
 def make_clean_release_stage(parent: Path) -> Path:
     """Create a structure-only release stage with no executable media."""
 
-    stage = parent / "AI人物媒体标记工具-v1.0.0"
+    stage = parent / "ai-media-synthetic-marker-v1.0.0"
     stage.mkdir()
     write_placeholder(stage / "AI人物媒体标记工具.exe")
     write_placeholder(stage / "使用说明.txt", "测试说明".encode("utf-8"))
@@ -198,6 +198,7 @@ class DeterministicZipTests(unittest.TestCase):
             with zipfile.ZipFile(first_zip) as archive:
                 names = archive.namelist()
             prefix = f"{stage.name}/"
+            self.assertTrue(stage.name.isascii())
             self.assertTrue(names)
             self.assertTrue(all(name.startswith(prefix) for name in names))
             folded_names = [name.casefold() for name in names]
