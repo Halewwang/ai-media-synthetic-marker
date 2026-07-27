@@ -138,20 +138,35 @@ internal sealed record IntegrationServices(
     MediaProcessor Processor,
     ExifToolClient ExifTool)
 {
-    public static async Task<IntegrationServices> CreateAsync()
+    public static Task<IntegrationServices> CreateAsync() =>
+        CreateAsync(Environment.GetEnvironmentVariable("EMKE_EXIFTOOL"));
+
+    internal static async Task<IntegrationServices> CreateAsync(
+        string? executable)
     {
-        string? executable =
-            Environment.GetEnvironmentVariable("EMKE_EXIFTOOL");
-        Assert.SkipUnless(
-            !string.IsNullOrWhiteSpace(executable),
-            "EMKE_EXIFTOOL is required for real ExifTool integration tests.");
-        string fullPath = Path.GetFullPath(executable!);
-        Assert.True(File.Exists(fullPath), $"ExifTool executable not found: {fullPath}");
+        if (string.IsNullOrWhiteSpace(executable))
+        {
+            throw new InvalidOperationException(
+                "EMKE_EXIFTOOL is required.");
+        }
+
+        string fullPath = Path.GetFullPath(executable);
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException(
+                "ExifTool executable not found.",
+                fullPath);
+        }
 
         var exifTool = new ExifToolClient(fullPath, new ProcessRunner());
-        Assert.Equal(
-            "13.59",
-            await exifTool.GetVersionAsync(CancellationToken.None));
+        string version =
+            await exifTool.GetVersionAsync(CancellationToken.None);
+        if (!string.Equals(version, "13.59", StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"ExifTool 13.59 is required. Actual: {version}");
+        }
+
         var processor = new MediaProcessor(
             new PhysicalCopyTransaction(),
             exifTool,

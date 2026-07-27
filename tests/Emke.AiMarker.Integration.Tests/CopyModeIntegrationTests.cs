@@ -65,7 +65,7 @@ public sealed class CopyModeIntegrationTests
     [InlineData("fixture.jpeg")]
     [InlineData("fixture.png")]
     [InlineData("fixture.mp4")]
-    public async Task Reprocessing_existing_output_reports_compliant_without_duplicate_marker(
+    public async Task Compliant_output_is_copied_then_existing_final_is_reported(
         string name)
     {
         await using IntegrationHarness harness =
@@ -79,22 +79,71 @@ public sealed class CopyModeIntegrationTests
         Assert.True(
             first.Status == ProcessStatus.Added,
             $"Expected Added, got {first.Status}: {first.Error} {first.Evidence.Error}");
+        string firstOutputSha = Hashing.Sha256(first.OutputPath);
+        string firstImageDataHash =
+            await services.ExifTool.ReadImageDataHashAsync(
+                first.OutputPath,
+                CancellationToken.None);
+        Assert.False(string.IsNullOrWhiteSpace(firstImageDataHash));
 
+        OutputPlanItem secondPlan = IntegrationPlans.For(
+            first.OutputPath,
+            Path.Combine(harness.Root, "output-2"));
         ProcessResult second = await services.Processor.ProcessAsync(
-            harness.Plan,
+            secondPlan,
             RunMode.MarkCopies,
             CancellationToken.None);
 
-        Assert.Equal(ProcessStatus.OutputAlreadyCompliant, second.Status);
+        Assert.NotEqual(first.OutputPath, second.OutputPath);
+        Assert.Equal(ProcessStatus.AlreadyCompliant, second.Status);
         Assert.Equal(VerificationResult.Passed, second.Evidence.Result);
-        IReadOnlyList<string> subjects =
+        Assert.Equal(secondPlan.FinalPath, second.OutputPath);
+        Assert.True(File.Exists(second.OutputPath));
+        Assert.Equal(firstOutputSha, Hashing.Sha256(first.OutputPath));
+        IReadOnlyList<string> copiedSubjects =
             await services.ExifTool.ReadSubjectsAsync(
                 second.OutputPath,
                 CancellationToken.None);
-        Assert.Contains(IntegrationConstants.ExistingSubject, subjects);
+        Assert.Contains(
+            IntegrationConstants.ExistingSubject,
+            copiedSubjects);
         Assert.Equal(
             1,
-            subjects.Count(subject =>
+            copiedSubjects.Count(subject =>
+                string.Equals(
+                    subject,
+                    MarkerContract.Marker,
+                    StringComparison.Ordinal)));
+        string secondImageDataHash =
+            await services.ExifTool.ReadImageDataHashAsync(
+                second.OutputPath,
+                CancellationToken.None);
+        Assert.False(string.IsNullOrWhiteSpace(secondImageDataHash));
+        Assert.Equal(firstImageDataHash, secondImageDataHash);
+
+        ProcessResult existingFinal = await services.Processor.ProcessAsync(
+            secondPlan,
+            RunMode.MarkCopies,
+            CancellationToken.None);
+
+        Assert.Equal(
+            ProcessStatus.OutputAlreadyCompliant,
+            existingFinal.Status);
+        Assert.Equal(
+            VerificationResult.Passed,
+            existingFinal.Evidence.Result);
+        Assert.Equal(second.OutputPath, existingFinal.OutputPath);
+        Assert.Equal(firstOutputSha, Hashing.Sha256(first.OutputPath));
+        IReadOnlyList<string> existingFinalSubjects =
+            await services.ExifTool.ReadSubjectsAsync(
+                existingFinal.OutputPath,
+                CancellationToken.None);
+        Assert.Contains(
+            IntegrationConstants.ExistingSubject,
+            existingFinalSubjects);
+        Assert.Equal(
+            1,
+            existingFinalSubjects.Count(subject =>
                 string.Equals(
                     subject,
                     MarkerContract.Marker,
