@@ -1,10 +1,13 @@
 using System.Text;
 using Emke.AiMarker.Core.Abstractions;
 using Emke.AiMarker.Core.Models;
+using Emke.AiMarker.Infrastructure.Files;
 
 namespace Emke.AiMarker.Infrastructure.Logging;
 
-public sealed class CsvRunLogWriter(TimeProvider? timeProvider = null) : IRunLogWriter
+public sealed class CsvRunLogWriter(
+    TimeProvider? timeProvider = null,
+    Action<string>? atCommitBoundary = null) : IRunLogWriter
 {
     private static readonly string[] Headers =
     [
@@ -22,6 +25,7 @@ public sealed class CsvRunLogWriter(TimeProvider? timeProvider = null) : IRunLog
     ];
 
     private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly Action<string>? _atCommitBoundary = atCommitBoundary;
 
     public async Task<string> WriteAsync(
         string logDirectory,
@@ -39,25 +43,23 @@ public sealed class CsvRunLogWriter(TimeProvider? timeProvider = null) : IRunLog
             logDirectory,
             $".{filename}.{Guid.NewGuid():N}.tmp");
 
+        OwnedTempFile? owned = null;
+        bool committed = false;
         try
         {
-            await using (var stream = new FileStream(
+            owned = OwnedTempFile.Reserve(
                 tempPath,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
+                finalPath,
+                $".{filename}.");
+            await using (var writer = new StreamWriter(
+                owned.Destination,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
                 bufferSize: 4096,
-                FileOptions.Asynchronous))
+                leaveOpen: true)
             {
-                await using var writer = new StreamWriter(
-                    stream,
-                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: true),
-                    bufferSize: 4096,
-                    leaveOpen: true)
-                {
-                    NewLine = "\r\n",
-                };
-
+                NewLine = "\r\n",
+            })
+            {
                 cancellationToken.ThrowIfCancellationRequested();
                 await writer.WriteLineAsync(Row(Headers));
                 foreach (ProcessResult result in results)
@@ -67,17 +69,30 @@ public sealed class CsvRunLogWriter(TimeProvider? timeProvider = null) : IRunLog
                 }
 
                 await writer.FlushAsync(cancellationToken);
-                stream.Flush(flushToDisk: true);
             }
 
-            File.Move(tempPath, finalPath, overwrite: false);
+            owned.CompleteCopy();
+            owned.SealVerifiedPath();
+            _atCommitBoundary?.Invoke(tempPath);
+            owned.RenameVerifiedTo(finalPath);
+            committed = true;
             return finalPath;
         }
         finally
         {
-            if (File.Exists(tempPath))
+            if (owned is not null)
             {
-                File.Delete(tempPath);
+                try
+                {
+                    if (!committed)
+                    {
+                        owned.DeleteOwnedLease();
+                    }
+                }
+                finally
+                {
+                    owned.Dispose();
+                }
             }
         }
     }

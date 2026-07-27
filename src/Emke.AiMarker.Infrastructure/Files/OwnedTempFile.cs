@@ -44,9 +44,12 @@ internal sealed class OwnedTempFile : IDisposable
 
     public Stream Destination => RequireLease();
 
-    public static OwnedTempFile Reserve(string path, string finalPath)
+    public static OwnedTempFile Reserve(
+        string path,
+        string finalPath,
+        string requiredNamePrefix = Prefix)
     {
-        if (!HasOwnedPathShape(path, finalPath))
+        if (!HasOwnedPathShape(path, finalPath, requiredNamePrefix))
         {
             throw new IOException(
                 "临时文件不属于计划目标目录，已拒绝复制事务。");
@@ -152,7 +155,10 @@ internal sealed class OwnedTempFile : IDisposable
         _lease = null;
     }
 
-    public static bool HasOwnedPathShape(string candidatePath, string finalPath)
+    public static bool HasOwnedPathShape(
+        string candidatePath,
+        string finalPath,
+        string requiredNamePrefix = Prefix)
     {
         try
         {
@@ -170,7 +176,9 @@ internal sealed class OwnedTempFile : IDisposable
                     candidateDirectory,
                     destinationDirectory,
                     StringComparison.OrdinalIgnoreCase)
-                && candidateName.StartsWith(Prefix, StringComparison.Ordinal);
+                && candidateName.StartsWith(
+                    requiredNamePrefix,
+                    StringComparison.Ordinal);
         }
         catch (Exception exception)
             when (exception is ArgumentException

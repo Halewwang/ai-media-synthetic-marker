@@ -56,6 +56,33 @@ internal sealed class InMemoryLogWriter(bool throwOnWrite = false) : IRunLogWrit
     }
 }
 
+internal sealed class BlockingProcessor : IFileProcessor
+{
+    private readonly TaskCompletionSource<ProcessResult> _completion = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public TaskCompletionSource<string> Started { get; } = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public List<string> StartedPaths { get; } = [];
+
+    public List<CancellationToken> ReceivedTokens { get; } = [];
+
+    public Task<ProcessResult> ProcessAsync(
+        OutputPlanItem plan,
+        RunMode mode,
+        CancellationToken cancellationToken)
+    {
+        StartedPaths.Add(plan.RelativePath);
+        ReceivedTokens.Add(cancellationToken);
+        Started.TrySetResult(plan.RelativePath);
+        return _completion.Task;
+    }
+
+    public void Complete(string relativePath, RunMode mode) =>
+        _completion.TrySetResult(TestResults.Added(relativePath, mode));
+}
+
 internal sealed class CapturingProgress : IProgress<RunProgress>
 {
     public List<RunProgress> Values { get; } = [];

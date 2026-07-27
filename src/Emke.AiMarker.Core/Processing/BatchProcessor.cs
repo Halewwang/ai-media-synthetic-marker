@@ -30,36 +30,41 @@ public sealed class BatchProcessor(
             for (int index = 0; index < plans.Count; index++)
             {
                 OutputPlanItem plan = plans[index];
-                if (stop.IsStopRequested)
+                Task<ProcessResult>? operation = null;
+                bool admitted;
+                try
+                {
+                    admitted = stop.TryAdmit(
+                        cancellationToken,
+                        () => operation = fileProcessor.ProcessAsync(
+                            plan,
+                            mode,
+                            CancellationToken.None));
+                }
+                catch (Exception exception)
+                {
+                    ProcessResult failed = FailedResult(plan, mode, exception);
+                    results.Add(failed);
+                    ReportProgress(progress, results, plans.Count, failed.RelativePath);
+                    continue;
+                }
+
+                if (!admitted)
                 {
                     stopped = true;
-                    for (int remaining = index; remaining < plans.Count; remaining++)
-                    {
-                        ProcessResult stoppedResult = StoppedResult(plans[remaining], mode);
-                        results.Add(stoppedResult);
-                        ReportProgress(
-                            progress,
-                            results,
-                            plans.Count,
-                            stoppedResult.RelativePath);
-                    }
-
+                    AddStoppedResults(results, plans, index, mode, progress);
                     break;
                 }
 
                 ProcessResult result;
                 try
                 {
-                    result = await fileProcessor.ProcessAsync(
-                        plan,
-                        mode,
-                        CancellationToken.None);
+                    result = await operation!;
                 }
                 catch (Exception exception)
                 {
                     result = FailedResult(plan, mode, exception);
                 }
-
                 results.Add(result);
                 ReportProgress(progress, results, plans.Count, result.RelativePath);
             }
@@ -128,6 +133,25 @@ public sealed class BatchProcessor(
 
     private static string MediaFormat(OutputPlanItem plan) =>
         Path.GetExtension(plan.SourcePath).TrimStart('.').ToUpperInvariant();
+
+    private static void AddStoppedResults(
+        List<ProcessResult> results,
+        IReadOnlyList<OutputPlanItem> plans,
+        int startIndex,
+        RunMode mode,
+        IProgress<RunProgress>? progress)
+    {
+        for (int index = startIndex; index < plans.Count; index++)
+        {
+            ProcessResult stoppedResult = StoppedResult(plans[index], mode);
+            results.Add(stoppedResult);
+            ReportProgress(
+                progress,
+                results,
+                plans.Count,
+                stoppedResult.RelativePath);
+        }
+    }
 
     private static void ReportProgress(
         IProgress<RunProgress>? progress,

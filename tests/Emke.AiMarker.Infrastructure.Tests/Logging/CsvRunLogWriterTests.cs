@@ -195,6 +195,47 @@ public sealed class CsvRunLogWriterTests : IDisposable
         Assert.Empty(Directory.EnumerateFiles(_temp, ".*.tmp"));
     }
 
+    [Fact]
+    public async Task Commit_boundary_never_moves_or_deletes_a_foreign_temp_replacement()
+    {
+        var replacement = new CsvSubstitutionAttempt();
+        var writer = new CsvRunLogWriter(atCommitBoundary: replacement.ReplaceWithForeignText);
+
+        if (OperatingSystem.IsWindows())
+        {
+            string finalPath = await writer.WriteAsync(
+                _temp,
+                RunMode.MarkCopies,
+                [TestResult("owned.jpg", "")],
+                TestContext.Current.CancellationToken);
+
+            Assert.False(replacement.DeleteSucceeded);
+            Assert.False(replacement.Succeeded);
+            Assert.IsType<IOException>(replacement.DeniedBy);
+            Assert.Contains("相对路径", await File.ReadAllTextAsync(
+                finalPath,
+                Encoding.UTF8,
+                TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            await Assert.ThrowsAsync<IOException>(() => writer.WriteAsync(
+                _temp,
+                RunMode.MarkCopies,
+                [TestResult("owned.jpg", "")],
+                TestContext.Current.CancellationToken));
+
+            Assert.True(replacement.DeleteSucceeded);
+            Assert.True(replacement.Succeeded);
+            Assert.NotNull(replacement.Path);
+            Assert.Equal("foreign CSV replacement", await File.ReadAllTextAsync(
+                replacement.Path!,
+                Encoding.UTF8,
+                TestContext.Current.CancellationToken));
+            Assert.Empty(Directory.EnumerateFiles(_temp, "*.csv"));
+        }
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_temp))
@@ -236,5 +277,32 @@ public sealed class CsvRunLogWriterTests : IDisposable
         }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    private sealed class CsvSubstitutionAttempt
+    {
+        public Exception? DeniedBy { get; private set; }
+
+        public bool DeleteSucceeded { get; private set; }
+
+        public string? Path { get; private set; }
+
+        public bool Succeeded { get; private set; }
+
+        public void ReplaceWithForeignText(string path)
+        {
+            Path = path;
+            try
+            {
+                File.Delete(path);
+                DeleteSucceeded = true;
+                File.WriteAllText(path, "foreign CSV replacement", Encoding.UTF8);
+                Succeeded = true;
+            }
+            catch (IOException exception)
+            {
+                DeniedBy = exception;
+            }
+        }
     }
 }
