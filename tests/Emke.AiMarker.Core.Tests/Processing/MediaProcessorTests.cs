@@ -321,6 +321,70 @@ public sealed class MediaProcessorTests
     }
 
     [Fact]
+    public async Task Existing_output_path_is_preflighted_before_any_ExifTool_call()
+    {
+        OutputPlanItem plan = TestPlans.Copy("商品.jpg");
+        Directory.CreateDirectory(Path.GetDirectoryName(plan.FinalPath)!);
+        await File.WriteAllBytesAsync(
+            plan.FinalPath,
+            [9, 8, 7],
+            TestContext.Current.CancellationToken);
+        try
+        {
+            var files = new FakeFileTransaction([1, 2, 3])
+            {
+                ThrowOnValidatePlan = true,
+            };
+            var exif = new FakeExifToolClient(
+                beforeSubjects: [MarkerContract.Marker],
+                rawXmp: TestXmp.ValidBag(MarkerContract.Marker));
+            var processor = CreateProcessor(files, exif);
+
+            ProcessResult result = await processor.ProcessAsync(
+                plan,
+                RunMode.MarkCopies,
+                TestContext.Current.CancellationToken);
+
+            Assert.Equal(ProcessStatus.Failed, result.Status);
+            Assert.True(files.ValidatePlanCalled);
+            Assert.False(files.PrepareCalled);
+            Assert.Empty(exif.Calls);
+            Assert.Contains("unsafe plan path", result.Error);
+        }
+        finally
+        {
+            Directory.Delete(
+                Directory.GetParent(Path.GetDirectoryName(plan.SourcePath)!)!.FullName,
+                recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData(RunMode.MarkOriginals)]
+    [InlineData(RunMode.VerifyOnly)]
+    public async Task Source_path_is_preflighted_before_first_ExifTool_call(
+        RunMode mode)
+    {
+        var files = new FakeFileTransaction([1, 2, 3])
+        {
+            ThrowOnValidatePlan = true,
+        };
+        var exif = new FakeExifToolClient(beforeSubjects: []);
+        var processor = CreateProcessor(files, exif);
+
+        ProcessResult result = await processor.ProcessAsync(
+            TestPlans.Copy("商品.jpg"),
+            mode,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProcessStatus.Failed, result.Status);
+        Assert.True(files.ValidatePlanCalled);
+        Assert.False(files.PrepareCalled);
+        Assert.Empty(exif.Calls);
+        Assert.Contains("unsafe plan path", result.Error);
+    }
+
+    [Fact]
     public async Task Compliant_existing_output_is_returned_without_preparing_temp()
     {
         OutputPlanItem plan = TestPlans.Copy("商品.jpg");

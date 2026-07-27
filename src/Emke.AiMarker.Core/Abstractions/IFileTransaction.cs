@@ -10,6 +10,8 @@ public sealed record PreparedMedia(
 
 public interface IFileTransaction
 {
+    void ValidatePlan(OutputPlanItem plan, RunMode mode);
+
     Task<PreparedMedia> PrepareAsync(
         OutputPlanItem plan,
         RunMode mode,

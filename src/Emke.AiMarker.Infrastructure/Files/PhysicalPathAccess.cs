@@ -5,12 +5,25 @@ namespace Emke.AiMarker.Infrastructure.Files;
 
 public sealed class PhysicalPathAccess : IPathAccess
 {
+    private readonly IPathComponentGuard pathGuard;
+
+    public PhysicalPathAccess()
+        : this(new PathComponentGuard())
+    {
+    }
+
+    public PhysicalPathAccess(IPathComponentGuard pathGuard)
+    {
+        this.pathGuard = pathGuard;
+    }
+
     public PathEntryKind GetKind(string path)
     {
+        string safePath = pathGuard.EnsurePathAllowsMissing(path);
         FileAttributes attributes;
         try
         {
-            attributes = File.GetAttributes(path);
+            attributes = File.GetAttributes(safePath);
         }
         catch (FileNotFoundException)
         {
@@ -32,7 +45,7 @@ public sealed class PhysicalPathAccess : IPathAccess
 
     public IEnumerable<string> EnumerateChildren(string directory) =>
         Directory.EnumerateFileSystemEntries(
-            directory,
+            pathGuard.EnsureExistingPath(directory),
             "*",
             new EnumerationOptions
             {
@@ -41,7 +54,8 @@ public sealed class PhysicalPathAccess : IPathAccess
                 AttributesToSkip = 0,
             });
 
-    public long GetFileLength(string file) => new FileInfo(file).Length;
+    public long GetFileLength(string file) =>
+        new FileInfo(pathGuard.EnsureExistingPath(file)).Length;
 
     public string GetFullPath(string path) => Path.GetFullPath(path);
 }

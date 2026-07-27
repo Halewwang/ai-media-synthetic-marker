@@ -23,6 +23,8 @@ internal sealed class FakeFileTransaction(
 
     public bool PrepareCalled { get; private set; }
 
+    public bool ValidatePlanCalled { get; private set; }
+
     public bool CommitCalled { get; private set; }
 
     public bool RollbackCalled { get; private set; }
@@ -31,9 +33,22 @@ internal sealed class FakeFileTransaction(
 
     public bool ThrowOnCommit { get; init; }
 
+    public bool ThrowOnValidatePlan { get; init; }
+
     public List<string> Calls { get; } = [];
 
     public List<CancellationToken> CancellationTokens { get; } = [];
+
+    public void ValidatePlan(OutputPlanItem plan, RunMode mode)
+    {
+        ValidatePlanCalled = true;
+        Calls.Add("preflight");
+        operationLog?.Add("preflight");
+        if (ThrowOnValidatePlan)
+        {
+            throw new IOException("unsafe plan path");
+        }
+    }
 
     public Task<PreparedMedia> PrepareAsync(
         OutputPlanItem plan,

@@ -10,18 +10,25 @@ public sealed class WindowsFileSafety : IOriginalWriteSafety
         | FileAttributes.Hidden
         | FileAttributes.System
         | FileAttributes.ReparsePoint;
+    private readonly IPathComponentGuard pathGuard;
+
+    public WindowsFileSafety()
+        : this(new PathComponentGuard())
+    {
+    }
+
+    public WindowsFileSafety(IPathComponentGuard pathGuard)
+    {
+        this.pathGuard = pathGuard;
+    }
 
     public void Validate(OutputPlanItem plan)
     {
         ArgumentNullException.ThrowIfNull(plan);
 
-        if (!File.Exists(plan.SourcePath))
-        {
-            throw new IOException(
-                $"原文件不存在，已拒绝直接写入：{plan.SourcePath}");
-        }
-
-        FileAttributes attributes = File.GetAttributes(plan.SourcePath);
+        string sourcePath =
+            pathGuard.EnsureExistingPath(plan.SourcePath);
+        FileAttributes attributes = File.GetAttributes(sourcePath);
         FileAttributes unsafeAttributes = attributes & UnsafeAttributes;
         if (unsafeAttributes == 0)
         {
@@ -38,7 +45,7 @@ public sealed class WindowsFileSafety : IOriginalWriteSafety
             unsafeAttributes,
             reasons);
         throw new IOException(
-            $"原文件具有不安全属性（{string.Join("、", reasons)}），已拒绝直接写入：{plan.SourcePath}");
+            $"原文件具有不安全属性（{string.Join("、", reasons)}），已拒绝直接写入：{sourcePath}");
     }
 
     private static void AddReason(

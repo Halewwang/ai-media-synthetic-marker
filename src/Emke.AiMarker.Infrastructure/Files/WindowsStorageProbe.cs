@@ -6,20 +6,31 @@ namespace Emke.AiMarker.Infrastructure.Files;
 public sealed class WindowsStorageProbe : IStorageProbe
 {
     private readonly Func<string, FreeSpaceQueryResult> getFreeSpace;
+    private readonly IPathComponentGuard pathGuard;
 
     public WindowsStorageProbe()
-        : this(QueryFreeSpace)
+        : this(QueryFreeSpace, new PathComponentGuard())
     {
     }
 
     public WindowsStorageProbe(Func<string, FreeSpaceQueryResult> getFreeSpace)
+        : this(getFreeSpace, new PathComponentGuard())
+    {
+    }
+
+    public WindowsStorageProbe(
+        Func<string, FreeSpaceQueryResult> getFreeSpace,
+        IPathComponentGuard pathGuard)
     {
         this.getFreeSpace = getFreeSpace;
+        this.pathGuard = pathGuard;
     }
 
     public long GetAvailableBytes(string directory)
     {
-        FreeSpaceQueryResult result = getFreeSpace(NormalizeDirectory(directory));
+        string safeDirectory = pathGuard.EnsurePathAllowsMissing(directory);
+        FreeSpaceQueryResult result =
+            getFreeSpace(NormalizeDirectory(safeDirectory));
         if (!result.Succeeded)
         {
             throw new IOException($"无法读取输出目录可用空间（Windows 错误 {result.ErrorCode}）。");
@@ -37,10 +48,14 @@ public sealed class WindowsStorageProbe : IStorageProbe
 
     public void AssertWritable(string directory)
     {
-        Directory.CreateDirectory(directory);
+        string safeDirectory = pathGuard.EnsurePathAllowsMissing(directory);
+        Directory.CreateDirectory(safeDirectory);
+        safeDirectory = pathGuard.EnsureExistingPath(safeDirectory);
         string probePath = Path.Combine(
-            directory,
+            safeDirectory,
             $".emke-ai-marker-probe-{Guid.NewGuid():N}.tmp");
+        probePath = pathGuard.EnsurePathAllowsMissing(probePath);
+        bool created = false;
 
         try
         {
@@ -52,16 +67,24 @@ public sealed class WindowsStorageProbe : IStorageProbe
                 bufferSize: 1,
                 FileOptions.WriteThrough))
             {
+                created = true;
                 stream.Flush(flushToDisk: true);
             }
 
+            probePath = pathGuard.EnsureExistingPath(probePath);
             File.Delete(probePath);
+            created = false;
         }
         finally
         {
-            if (File.Exists(probePath))
+            if (created)
             {
-                File.Delete(probePath);
+                string safeProbe =
+                    pathGuard.EnsurePathAllowsMissing(probePath);
+                if (File.Exists(safeProbe))
+                {
+                    File.Delete(safeProbe);
+                }
             }
         }
     }

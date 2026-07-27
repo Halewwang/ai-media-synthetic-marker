@@ -111,7 +111,8 @@ internal sealed class IntegrationHarness : IAsyncDisposable
     public static IntegrationHarness Create(string fixtureName)
     {
         string root = Path.Combine(
-            Path.GetTempPath(),
+            AppContext.BaseDirectory,
+            "integration-workspaces",
             $".emke-ai-marker-integration-{Guid.NewGuid():N}");
         string inputDirectory = Path.Combine(root, "input");
         string outputDirectory = Path.Combine(root, "output");

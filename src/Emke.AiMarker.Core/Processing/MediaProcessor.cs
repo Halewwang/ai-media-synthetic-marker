@@ -26,6 +26,7 @@ public sealed class MediaProcessor(
 
         try
         {
+            files.ValidatePlan(plan, mode);
             if (mode == RunMode.MarkCopies && File.Exists(plan.FinalPath))
             {
                 return await InspectExistingOutputAsync(plan);

@@ -12,7 +12,7 @@ public sealed class WindowsStorageProbeTests
         {
             queriedDirectory = directory;
             return new FreeSpaceQueryResult(true, 4_294_967_296, 0);
-        });
+        }, new AllowAllPathComponentGuard());
 
         long available = probe.GetAvailableBytes(@"\\server\share\待标记");
 
@@ -24,11 +24,19 @@ public sealed class WindowsStorageProbeTests
     public void GetAvailableBytes_surfaces_native_failure_as_actionable_io_exception()
     {
         var probe = new WindowsStorageProbe(
-            _ => new FreeSpaceQueryResult(false, 0, 5));
+            _ => new FreeSpaceQueryResult(false, 0, 5),
+            new AllowAllPathComponentGuard());
 
         IOException exception = Assert.Throws<IOException>(
             () => probe.GetAvailableBytes(@"\\server\share\待标记"));
 
         Assert.Contains("Windows 错误 5", exception.Message);
+    }
+
+    private sealed class AllowAllPathComponentGuard : IPathComponentGuard
+    {
+        public string EnsureExistingPath(string path) => path;
+
+        public string EnsurePathAllowsMissing(string path) => path;
     }
 }

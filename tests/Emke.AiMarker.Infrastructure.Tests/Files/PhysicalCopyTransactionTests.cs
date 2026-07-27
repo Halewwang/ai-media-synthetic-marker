@@ -580,7 +580,8 @@ public sealed class PhysicalCopyTransactionTests
     private sealed class TemporaryWorkspace : IDisposable
     {
         public string Root { get; } = Path.Combine(
-            Path.GetTempPath(),
+            AppContext.BaseDirectory,
+            "transaction-workspaces",
             $"emke-transaction-tests-{Guid.NewGuid():N}");
 
         public OutputPlanItem CreatePlan(byte[] sourceBytes)
