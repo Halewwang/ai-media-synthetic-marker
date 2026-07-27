@@ -40,6 +40,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private bool isOverwriteOriginals;
     private string summaryMessage;
     private StopController? activeStop;
+    private TaskCompletionSource? activeRunCompletion;
     private bool stopRequested;
     private RunMode? completedMode;
     private int operationActive;
@@ -273,9 +274,35 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public Task StartMarkAsync() =>
         ExecuteExclusiveAsync(
-            _ => RunCoreAsync(
-                IsOverwriteOriginals ? RunMode.MarkOriginals : RunMode.MarkCopies),
+            async _ =>
+            {
+                RunMode mode = IsOverwriteOriginals
+                    ? RunMode.MarkOriginals
+                    : RunMode.MarkCopies;
+                if (mode == RunMode.MarkOriginals
+                    && !await prompts.ConfirmOriginalWriteAsync(ProcessableCount))
+                {
+                    return;
+                }
+
+                await RunCoreAsync(mode);
+            },
             CanStartState);
+
+    public async Task RequestSafeStopAndWaitAsync()
+    {
+        if (State != WorkspaceState.Running || activeStop is null)
+        {
+            return;
+        }
+
+        Task? completion = activeRunCompletion?.Task;
+        await RequestSafeStopAsync();
+        if (completion is not null)
+        {
+            await completion;
+        }
+    }
 
     private void ApplyPaths(IReadOnlyList<string> paths)
     {
@@ -360,6 +387,8 @@ public sealed class MainWindowViewModel : ObservableObject
         TotalCount = plans.Count;
         stopRequested = false;
         activeStop = new StopController();
+        activeRunCompletion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         Interlocked.Increment(ref workspaceRevision);
         State = WorkspaceState.Running;
         SummaryMessage = text.Format("RunningProgressFormat", 0, TotalCount);
@@ -390,6 +419,8 @@ public sealed class MainWindowViewModel : ObservableObject
             stopRequested = false;
             State = WorkspaceState.Completed;
             IsOverwriteOriginals = false;
+            activeRunCompletion?.TrySetResult();
+            activeRunCompletion = null;
             NotifyCommands();
         }
     }

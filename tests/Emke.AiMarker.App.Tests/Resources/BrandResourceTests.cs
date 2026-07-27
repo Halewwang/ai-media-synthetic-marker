@@ -159,6 +159,19 @@ public sealed partial class BrandResourceTests
             "OpenLogButton",
             "ResetButton",
             "AdvancedWarning",
+            "SettingsTitle",
+            "AdvancedHeading",
+            "OverwriteOriginalsSetting",
+            "SettingsDoneButton",
+            "OriginalWriteConfirmationTitle",
+            "OriginalWriteConfirmationFormat",
+            "ConfirmModifyOriginalsButton",
+            "CancelButton",
+            "RunningCloseTitle",
+            "RunningCloseWarning",
+            "ContinueProcessingButton",
+            "SafeStopAndWaitButton",
+            "AlreadyRunningMessage",
             "ErrorTitle",
             "ErrorDismissButton",
             "ResultAdded",
@@ -179,6 +192,17 @@ public sealed partial class BrandResourceTests
         Assert.All(
             strings.Root!.Elements(),
             element => Assert.False(string.IsNullOrWhiteSpace(element.Value)));
+        Assert.Equal(
+            "即将直接修改 {0} 个原始媒体文件。\n"
+            + "本次不会创建备份，文件容器和校验值会改变。\n"
+            + "请确认这些媒体已经人工判断需要 contains-synthetic-performer。",
+            GetResource(strings, "OriginalWriteConfirmationFormat"));
+        Assert.Equal(
+            "任务正在进行。选择“安全停止”后，应用会完成当前文件并停止后续文件。",
+            GetResource(strings, "RunningCloseWarning"));
+        Assert.Equal(
+            "EMKE AI Marker 已在运行",
+            GetResource(strings, "AlreadyRunningMessage"));
     }
 
     [Fact]
@@ -186,16 +210,59 @@ public sealed partial class BrandResourceTests
     {
         string appRoot = FromRoot("src", "Emke.AiMarker.App");
         string[] inspected = Directory
-            .EnumerateFiles(appRoot, "*.cs", SearchOption.AllDirectories)
+            .EnumerateFiles(appRoot, "*", SearchOption.AllDirectories)
+            .Where(path => Path.GetExtension(path) is ".cs" or ".xaml")
             .Where(path => !path.Contains(
                 $"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}",
                 StringComparison.Ordinal))
-            .Append(Path.Combine(appRoot, "MainWindow.xaml"))
+            .Where(path => !path.EndsWith(
+                "Strings.zh-CN.xaml",
+                StringComparison.Ordinal))
             .ToArray();
 
         Assert.All(
             inspected,
             path => Assert.DoesNotMatch(CjkText(), File.ReadAllText(path)));
+    }
+
+    [Fact]
+    public void Advanced_settings_and_confirmations_are_bound_to_the_safe_contract()
+    {
+        string mainWindow = File.ReadAllText(
+            FromRoot("src", "Emke.AiMarker.App", "MainWindow.xaml"));
+        string settings = File.ReadAllText(
+            FromRoot("src", "Emke.AiMarker.App", "Views", "SettingsDialog.xaml"));
+        XDocument confirmation = XDocument.Load(
+            FromRoot("src", "Emke.AiMarker.App", "Views", "ConfirmationDialog.xaml"));
+
+        Assert.Contains(
+            "Value=\"{StaticResource DangerBrush}\"",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Binding=\"{Binding IsOverwriteOriginals}\"",
+            mainWindow,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "IsChecked=\"{Binding IsOverwriteOriginals, Mode=TwoWay",
+            settings,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "{DynamicResource AdvancedHeading}",
+            settings,
+            StringComparison.Ordinal);
+
+        XElement cancel = confirmation
+            .Descendants(Presentation + "Button")
+            .Single(element =>
+                (string?)element.Attribute("Content") == "{Binding CancelText}");
+        XElement affirmative = confirmation
+            .Descendants(Presentation + "Button")
+            .Single(element =>
+                (string?)element.Attribute("Content") == "{Binding AffirmativeText}");
+        Assert.Equal("True", (string?)cancel.Attribute("IsDefault"));
+        Assert.NotEqual("True", (string?)affirmative.Attribute("IsDefault"));
+        Assert.Equal("True", (string?)cancel.Attribute("IsCancel"));
     }
 
     [Fact]
@@ -228,7 +295,35 @@ public sealed partial class BrandResourceTests
         Assert.Contains("IsExpanded=\"{Binding IsDetailsExpanded}\"", xaml, StringComparison.Ordinal);
         Assert.Contains("Drop=\"DropTarget_OnDrop\"", xaml, StringComparison.Ordinal);
         Assert.Contains("DragOver=\"DropTarget_OnDragOver\"", xaml, StringComparison.Ordinal);
+        Assert.Contains("Closing=\"MainWindow_OnClosing\"", xaml, StringComparison.Ordinal);
         Assert.Contains("AutomationProperties.Name=", xaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Startup_checks_self_test_before_single_instance_and_window_composition()
+    {
+        string startup = File.ReadAllText(
+            FromRoot("src", "Emke.AiMarker.App", "App.xaml.cs"));
+        int selfTest = startup.IndexOf(
+            "SelfTestArguments.IsRequested",
+            StringComparison.Ordinal);
+        int singleInstance = startup.IndexOf(
+            "new SingleInstanceGuard",
+            StringComparison.Ordinal);
+        int mainWindow = startup.IndexOf(
+            "new MainWindow",
+            StringComparison.Ordinal);
+        int exifTool = startup.IndexOf(
+            "new ExifToolClient",
+            StringComparison.Ordinal);
+
+        Assert.True(selfTest >= 0);
+        Assert.True(singleInstance > selfTest);
+        Assert.True(exifTool > singleInstance);
+        Assert.True(mainWindow > exifTool);
+        Assert.Contains("Shutdown(selfTestExitCode)", startup, StringComparison.Ordinal);
+        Assert.Contains("Shutdown(0)", startup, StringComparison.Ordinal);
+        Assert.Contains("singleInstance?.Dispose()", startup, StringComparison.Ordinal);
     }
 
     private static void AssertResource(
@@ -241,6 +336,12 @@ public sealed partial class BrandResourceTests
             .Single(element => (string?)element.Attribute(Xaml + "Key") == key);
         Assert.Equal(expectedValue, resource.Value.Trim());
     }
+
+    private static string GetResource(XDocument document, string key) =>
+        document.Root!
+            .Elements()
+            .Single(element => (string?)element.Attribute(Xaml + "Key") == key)
+            .Value;
 
     private static void AssertBrushResource(
         XDocument document,

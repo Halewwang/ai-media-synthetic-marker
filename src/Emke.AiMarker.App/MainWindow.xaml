@@ -11,7 +11,8 @@
         FontFamily="{StaticResource AppFontFamily}"
         Foreground="{StaticResource PrimaryTextBrush}"
         TextOptions.TextFormattingMode="Display"
-        UseLayoutRounding="True">
+        UseLayoutRounding="True"
+        Closing="MainWindow_OnClosing">
     <Grid Background="{StaticResource AppBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -145,10 +146,37 @@
                                  AutomationProperties.Name="{DynamicResource MarkerLabel}" />
                         <Border Margin="0,12,0,0"
                                 Padding="12"
-                                Background="{StaticResource SafetyBackgroundBrush}"
                                 CornerRadius="8">
-                            <TextBlock Text="{DynamicResource SafeCopyStatement}"
-                                       TextWrapping="Wrap" />
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background"
+                                            Value="{StaticResource SafetyBackgroundBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsOverwriteOriginals}"
+                                                     Value="True">
+                                            <Setter Property="Background"
+                                                    Value="{StaticResource DangerBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Text"
+                                                Value="{DynamicResource SafeCopyStatement}" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsOverwriteOriginals}"
+                                                         Value="True">
+                                                <Setter Property="Text"
+                                                        Value="{DynamicResource AdvancedWarning}" />
+                                                <Setter Property="Foreground"
+                                                        Value="White" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </Border>
                         <Expander Margin="0,12,0,0"
                                   Header="{DynamicResource FileDetails}"

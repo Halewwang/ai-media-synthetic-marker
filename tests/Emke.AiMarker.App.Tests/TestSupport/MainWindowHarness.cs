@@ -258,12 +258,30 @@ internal sealed class RecordingPromptService : IUserPromptService
 
     public Task Prompted => prompted.Task;
 
+    public bool NextOriginalWriteConfirmation { get; set; } = true;
+
+    public bool NextSafeCloseConfirmation { get; set; }
+
+    public int OriginalWriteConfirmationCount { get; private set; }
+
+    public int LastOriginalWriteCount { get; private set; }
+
     public Task ShowErrorAsync(string message)
     {
         Errors.Add(message);
         prompted.TrySetResult();
         return Task.CompletedTask;
     }
+
+    public Task<bool> ConfirmOriginalWriteAsync(int count)
+    {
+        OriginalWriteConfirmationCount++;
+        LastOriginalWriteCount = count;
+        return Task.FromResult(NextOriginalWriteConfirmation);
+    }
+
+    public Task<bool> ConfirmSafeStopForCloseAsync() =>
+        Task.FromResult(NextSafeCloseConfirmation);
 }
 
 internal sealed class RecordingShellService : IShellService

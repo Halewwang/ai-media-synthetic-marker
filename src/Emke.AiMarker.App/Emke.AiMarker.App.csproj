@@ -21,6 +21,10 @@
   <ItemGroup>
     <Resource Include="Assets\emke-app-logo-32.png" />
     <Resource Include="Assets\emke-app-logo-256.png" />
+    <Resource Include="Assets\emke-ai-marker.ico" />
+    <Content Include="..\..\packaging\exiftool.lock.json"
+             Link="exiftool.lock.json"
+             CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

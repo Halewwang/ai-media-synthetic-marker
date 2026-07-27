@@ -25,6 +25,21 @@
     <sys:String x:Key="OpenLogButton">打开运行记录</sys:String>
     <sys:String x:Key="ResetButton">重新开始</sys:String>
     <sys:String x:Key="AdvancedWarning">高级模式会直接修改原始媒体；每次运行都必须再次确认。</sys:String>
+    <sys:String x:Key="SettingsTitle">设置</sys:String>
+    <sys:String x:Key="AdvancedHeading">高级</sys:String>
+    <sys:String x:Key="OverwriteOriginalsSetting">本次运行直接修改原始媒体</sys:String>
+    <sys:String x:Key="SettingsDoneButton">完成</sys:String>
+    <sys:String x:Key="OriginalWriteConfirmationTitle">确认修改原件</sys:String>
+    <sys:String x:Key="OriginalWriteConfirmationFormat">即将直接修改 {0} 个原始媒体文件。
+本次不会创建备份，文件容器和校验值会改变。
+请确认这些媒体已经人工判断需要 contains-synthetic-performer。</sys:String>
+    <sys:String x:Key="ConfirmModifyOriginalsButton">确认修改原件</sys:String>
+    <sys:String x:Key="CancelButton">取消</sys:String>
+    <sys:String x:Key="RunningCloseTitle">任务正在进行</sys:String>
+    <sys:String x:Key="RunningCloseWarning">任务正在进行。选择“安全停止”后，应用会完成当前文件并停止后续文件。</sys:String>
+    <sys:String x:Key="ContinueProcessingButton">继续处理</sys:String>
+    <sys:String x:Key="SafeStopAndWaitButton">安全停止并等待</sys:String>
+    <sys:String x:Key="AlreadyRunningMessage">EMKE AI Marker 已在运行</sys:String>
     <sys:String x:Key="ErrorTitle">操作失败</sys:String>
     <sys:String x:Key="ErrorDismissButton">知道了</sys:String>
     <sys:String x:Key="ResultAdded">已新增标记</sys:String>
