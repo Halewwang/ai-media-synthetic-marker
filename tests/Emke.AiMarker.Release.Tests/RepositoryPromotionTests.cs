@@ -222,6 +222,31 @@ public sealed partial class RepositoryPromotionTests
     }
 
     [Fact]
+    public void Release_template_tracks_only_the_v2_example_output_placeholder()
+    {
+        Assert.False(Directory.Exists(PathInRepository("release_template/待标记")));
+        Assert.False(Directory.Exists(PathInRepository("release_template/运行记录")));
+
+        string exampleOutput = PathInRepository(
+            "release_template/示例输出/EMKE 已标记");
+        Assert.True(
+            Directory.Exists(exampleOutput),
+            "The v2 example output directory is missing.");
+        string[] entries = Directory
+            .EnumerateFileSystemEntries(
+                exampleOutput,
+                "*",
+                SearchOption.AllDirectories)
+            .Select(entry => Path.GetRelativePath(exampleOutput, entry))
+            .ToArray();
+        Assert.Equal([".gitkeep"], entries);
+        Assert.DoesNotContain(
+            entries,
+            entry => new[] { ".jpg", ".jpeg", ".png", ".mp4", ".csv" }
+                .Contains(Path.GetExtension(entry), StringComparer.OrdinalIgnoreCase));
+    }
+
+    [Fact]
     public void Official_dotnet_10_license_bytes_are_retained()
     {
         Assert.Equal(
