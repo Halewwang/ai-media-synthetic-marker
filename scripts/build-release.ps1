@@ -4,6 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'release-path-safety.ps1')
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $solution = Join-Path $repoRoot 'Emke.AiMarker.sln'
 $releaseProject = Join-Path $repoRoot 'tools/Emke.AiMarker.Release/Emke.AiMarker.Release.csproj'
@@ -19,9 +20,15 @@ function Remove-OwnedDirectory {
         [Parameter(Mandatory = $true)]
         [string]$ExpectedParent,
         [Parameter(Mandatory = $true)]
-        [string]$ExpectedName
+        [string]$ExpectedName,
+        [Parameter(Mandatory = $true)]
+        [string]$RepositoryRoot
     )
 
+    Assert-NoReparsePathComponents `
+        -RepositoryRoot $RepositoryRoot `
+        -CandidatePath $Path `
+        -Description 'publish output'
     if (-not (Test-Path -LiteralPath $Path)) {
         return
     }
@@ -48,6 +55,10 @@ function Remove-OwnedDirectory {
         throw "Refusing to clean publish output containing a reparse point: $($unsafeEntry.FullName)"
     }
 
+    Assert-NoReparsePathComponents `
+        -RepositoryRoot $RepositoryRoot `
+        -CandidatePath $Path `
+        -Description 'publish output'
     Remove-Item -LiteralPath $fullPath -Recurse -Force
 }
 
@@ -71,10 +82,19 @@ try {
         throw "Release tests failed with exit code $LASTEXITCODE."
     }
 
+    Assert-NoReparsePathComponents `
+        -RepositoryRoot $repoRoot `
+        -CandidatePath $publishDirectory `
+        -Description 'publish output'
     Remove-OwnedDirectory `
         -Path $publishDirectory `
         -ExpectedParent (Join-Path $repoRoot 'build/publish') `
-        -ExpectedName 'win-x64'
+        -ExpectedName 'win-x64' `
+        -RepositoryRoot $repoRoot
+    Assert-NoReparsePathComponents `
+        -RepositoryRoot $repoRoot `
+        -CandidatePath $publishDirectory `
+        -Description 'publish output'
     & $DotNet publish $appProject -c Release -r win-x64 `
         --self-contained true -o $publishDirectory --no-restore
     if ($LASTEXITCODE -ne 0) {

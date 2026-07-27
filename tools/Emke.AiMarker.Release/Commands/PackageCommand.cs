@@ -201,6 +201,7 @@ public sealed class PackageCommand
             }
 
             ValidateSelfTestReport(reportPath);
+            EnsureExistingOutputDirectorySafe(root, output);
             ReleaseStageValidator.Validate(candidateStage, manifestPath);
             Directory.CreateDirectory(finalStageParent);
             EnsureNoReparseComponents(root, finalStageParent, "stage 父目录");
@@ -216,25 +217,32 @@ public sealed class PackageCommand
                 $".{ZipName}.{Guid.NewGuid():N}.tmp");
             try
             {
+                EnsureExistingOutputDirectorySafe(root, output);
                 DeterministicZipWriter.Write(
                     finalStage,
                     candidateZip,
                     RootName,
                     epoch);
                 string digest = ComputeSha256(candidateZip);
+                EnsureExistingOutputDirectorySafe(root, output);
                 File.Move(candidateZip, outputZip, overwrite: false);
+                EnsureExistingOutputDirectorySafe(root, output);
                 WriteChecksumAtomically(
+                    root,
+                    output,
                     checksum,
                     $"{digest}  {ZipName}\n");
                 return new(outputZip, checksum, digest, finalStage);
             }
             finally
             {
+                EnsureExistingOutputDirectorySafe(root, output);
                 File.Delete(candidateZip);
             }
         }
         catch
         {
+            EnsureExistingOutputDirectorySafe(root, output);
             File.Delete(outputZip);
             File.Delete(checksum);
             throw;
@@ -487,6 +495,14 @@ public sealed class PackageCommand
         return output;
     }
 
+    private static void EnsureExistingOutputDirectorySafe(
+        string root,
+        string output)
+    {
+        EnsureNoReparseComponents(root, output, "output 目录");
+        ReleaseStageValidator.EnsureOrdinaryDirectory(output, "output 目录");
+    }
+
     private static void EnsureOwnedBuildDirectory(string root, string build)
     {
         EnsureDescendant(root, build, "build 目录");
@@ -655,7 +671,11 @@ public sealed class PackageCommand
         Directory.Delete(path);
     }
 
-    private static void WriteChecksumAtomically(string path, string content)
+    private static void WriteChecksumAtomically(
+        string root,
+        string output,
+        string path,
+        string content)
     {
         string directory = Path.GetDirectoryName(path)!;
         string temporary = Path.Combine(
@@ -663,6 +683,7 @@ public sealed class PackageCommand
             $".{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         try
         {
+            EnsureExistingOutputDirectorySafe(root, output);
             using var stream = new FileStream(
                 temporary,
                 FileMode.CreateNew,
@@ -673,10 +694,12 @@ public sealed class PackageCommand
             byte[] bytes = Utf8.GetBytes(content);
             stream.Write(bytes);
             stream.Flush(flushToDisk: true);
+            EnsureExistingOutputDirectorySafe(root, output);
             File.Move(temporary, path, overwrite: false);
         }
         finally
         {
+            EnsureExistingOutputDirectorySafe(root, output);
             File.Delete(temporary);
         }
     }

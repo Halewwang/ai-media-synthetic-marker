@@ -203,6 +203,54 @@ public sealed class PackageCommandTests
         Assert.Equal("outside checksum", File.ReadAllText(checksum));
     }
 
+    [Fact]
+    public async Task Self_test_cannot_replace_output_with_link_or_delete_external_sentinels()
+    {
+        using var temp = new TemporaryDirectory();
+        (string root, FetchFixture fetch) = await PrepareRepositoryAsync(temp);
+        string dist = System.IO.Path.Combine(root, "dist");
+        string external = temp.CreateDirectory("external-dist");
+        string zip = System.IO.Path.Combine(
+            external,
+            "emke-ai-marker-v2.0.0-windows-x64.zip");
+        string checksum = System.IO.Path.Combine(external, "SHA256SUMS.txt");
+        byte[] zipSentinel = [0x45, 0x4d, 0x4b, 0x45, 0x00, 0xff];
+        byte[] checksumSentinel = [0x53, 0x48, 0x41, 0x32, 0x35, 0x36];
+        File.WriteAllBytes(zip, zipSentinel);
+        File.WriteAllBytes(checksum, checksumSentinel);
+        var process = new RecordingPackageProcess
+        {
+            MutateWorkingDirectory = _ =>
+            {
+                Directory.Delete(dist);
+                Directory.CreateSymbolicLink(dist, external);
+            },
+        };
+        var command = new PackageCommand(
+            process,
+            new FixedVersionProbe("13.59"));
+
+        Exception? error = await Record.ExceptionAsync(
+            () => command.ExecuteAsync(
+                root,
+                ReleaseFixtures.PublishDirectory(root),
+                dist,
+                1_700_000_000,
+                CancellationToken.None));
+
+        Assert.True(File.Exists(zip), "external ZIP sentinel was deleted");
+        Assert.True(File.Exists(checksum), "external checksum sentinel was deleted");
+        Assert.Equal(zipSentinel, File.ReadAllBytes(zip));
+        Assert.Equal(checksumSentinel, File.ReadAllBytes(checksum));
+        Assert.Equal(
+            ["SHA256SUMS.txt", "emke-ai-marker-v2.0.0-windows-x64.zip"],
+            Directory.EnumerateFiles(external)
+                .Select(path => System.IO.Path.GetFileName(path)!)
+                .Order(StringComparer.Ordinal)
+                .ToArray());
+        Assert.IsType<ReleaseToolException>(error);
+    }
+
     [Theory]
     [MemberData(nameof(SelfTestStagePollution))]
     public async Task Rejects_stage_pollution_created_by_successful_self_test(
