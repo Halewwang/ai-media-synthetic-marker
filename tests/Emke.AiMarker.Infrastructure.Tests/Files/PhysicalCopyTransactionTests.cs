@@ -301,6 +301,36 @@ public sealed class PhysicalCopyTransactionTests
     }
 
     [Fact]
+    public async Task Seal_refuses_substitution_after_verification_before_seal()
+    {
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction();
+        PreparedMedia media = await transaction.PrepareAsync(
+            plan,
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+        File.Delete(plan.TempPath);
+        await File.WriteAllBytesAsync(
+            plan.TempPath,
+            [9, 8, 7],
+            TestContext.Current.CancellationToken);
+
+        IOException exception = await Assert.ThrowsAsync<IOException>(
+            () => transaction.SealVerifiedAsync(
+                media,
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("所有权", exception.Message);
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(plan.FinalPath));
+    }
+
+    [Fact]
     public async Task Commit_refuses_owned_temp_without_strict_verification_seal()
     {
         using var workspace = new TemporaryWorkspace();
@@ -322,6 +352,35 @@ public sealed class PhysicalCopyTransactionTests
     }
 
     [Fact]
+    public async Task Commit_boundary_substitution_never_reaches_final_output()
+    {
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction(
+            atCommitBoundary: ReplaceWithForeignBytes);
+        PreparedMedia media = await transaction.PrepareAsync(
+            plan,
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+        await transaction.SealVerifiedAsync(
+            media,
+            TestContext.Current.CancellationToken);
+
+        IOException exception = await Assert.ThrowsAsync<IOException>(
+            () => transaction.CommitAsync(
+                media,
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("所有权", exception.Message);
+        Assert.False(File.Exists(plan.FinalPath));
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task Rollback_preserves_a_foreign_file_substituted_after_preparation()
     {
         using var workspace = new TemporaryWorkspace();
@@ -335,6 +394,29 @@ public sealed class PhysicalCopyTransactionTests
         await File.WriteAllBytesAsync(
             plan.TempPath,
             [9, 8, 7],
+            TestContext.Current.CancellationToken);
+
+        await transaction.RollbackAsync(media);
+
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
+        Assert.True(File.Exists(plan.SourcePath));
+        Assert.False(File.Exists(plan.FinalPath));
+    }
+
+    [Fact]
+    public async Task Rollback_boundary_substitution_is_never_deleted()
+    {
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction(
+            atRollbackBoundary: ReplaceWithForeignBytes);
+        PreparedMedia media = await transaction.PrepareAsync(
+            plan,
+            RunMode.MarkCopies,
             TestContext.Current.CancellationToken);
 
         await transaction.RollbackAsync(media);
@@ -405,5 +487,11 @@ public sealed class PhysicalCopyTransactionTests
                 Directory.Delete(Root, recursive: true);
             }
         }
+    }
+
+    private static void ReplaceWithForeignBytes(string path)
+    {
+        File.Delete(path);
+        File.WriteAllBytes(path, [9, 8, 7]);
     }
 }

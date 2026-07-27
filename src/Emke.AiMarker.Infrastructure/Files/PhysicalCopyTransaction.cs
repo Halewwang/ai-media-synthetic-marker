@@ -10,19 +10,19 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
         new(StringComparer.Ordinal);
     private readonly Action<string, Stream> _copyToOwnedStream;
     private readonly Action<string>? _beforeReserve;
-
-    public PhysicalCopyTransaction()
-        : this(CopySourceToOwnedStream)
-    {
-    }
+    private readonly Action<string>? _atCommitBoundary;
+    private readonly Action<string>? _atRollbackBoundary;
 
     public PhysicalCopyTransaction(
-        Action<string, Stream> copyToOwnedStream,
-        Action<string>? beforeReserve = null)
+        Action<string, Stream>? copyToOwnedStream = null,
+        Action<string>? beforeReserve = null,
+        Action<string>? atCommitBoundary = null,
+        Action<string>? atRollbackBoundary = null)
     {
-        ArgumentNullException.ThrowIfNull(copyToOwnedStream);
-        _copyToOwnedStream = copyToOwnedStream;
+        _copyToOwnedStream = copyToOwnedStream ?? CopySourceToOwnedStream;
         _beforeReserve = beforeReserve;
+        _atCommitBoundary = atCommitBoundary;
+        _atRollbackBoundary = atRollbackBoundary;
     }
 
     public Task<PreparedMedia> PrepareAsync(
@@ -81,8 +81,15 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
         }
         catch
         {
-            owned.DeleteIfStillOwned();
-            owned.Dispose();
+            try
+            {
+                owned.DeleteOwnedLease();
+            }
+            finally
+            {
+                owned.Dispose();
+            }
+
             throw;
         }
 
@@ -109,8 +116,6 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
             OwnedTempFile owned = GetProvenOwnership(media);
             if (!owned.StillOwnsVerifiedPath())
             {
-                _ownedTemps.Remove(media.OwnershipToken);
-                owned.Dispose();
                 throw new IOException(
                     "临时文件缺少严格验证封存或所有权无法证明，可能已被替换；已拒绝提交。");
             }
@@ -121,7 +126,8 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
                     $"目标冲突：输出文件已存在，未覆盖该文件：{media.FinalPath}");
             }
 
-            File.Move(media.WorkingPath, media.FinalPath, overwrite: false);
+            _atCommitBoundary?.Invoke(media.WorkingPath);
+            owned.RenameVerifiedTo(media.FinalPath);
             _ownedTemps.Remove(media.OwnershipToken);
             owned.Dispose();
         }
@@ -168,8 +174,15 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
             }
 
             _ownedTemps.Remove(media.OwnershipToken);
-            owned.DeleteIfStillOwned();
-            owned.Dispose();
+            try
+            {
+                _atRollbackBoundary?.Invoke(media.WorkingPath);
+                owned.DeleteOwnedLease();
+            }
+            finally
+            {
+                owned.Dispose();
+            }
         }
 
         return Task.CompletedTask;
