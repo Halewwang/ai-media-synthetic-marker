@@ -55,13 +55,13 @@ $ExifToolPath = Join-Path $PackageRoot "exiftool\exiftool.exe"
 $os = Get-ComputerInfo -Property WindowsProductName, WindowsVersion, OsBuildNumber, OsArchitecture
 $os | Format-List
 $env:PROCESSOR_ARCHITECTURE
-(Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion
-& $ExifToolPath -ver
 ```
 
-Pass the prerequisite only when the host is Windows 11, the native architecture
-is x64/AMD64, the files exist, and the recorded values came from this host and
-this extraction. Otherwise mark every dependent item `blocked`.
+This initialization block only defines paths and records host OS/architecture.
+It must not read or execute anything under `$PackageRoot` before step 1
+extracts it and step 2 verifies the ZIP checksum. Pass the host prerequisite
+only when the host is Windows 11 and the native architecture is x64/AMD64.
+Otherwise mark every dependent item `blocked`.
 
 ## Controlled source hashes
 
@@ -98,27 +98,6 @@ foreach ($SourceFile in $SourceFiles) {
 $BeforeSourceHashes
 ```
 
-## Headless self-test
-
-Run only from the fully extracted package root, after the ZIP checksum has
-matched. Do not run the executable from inside the ZIP:
-
-```powershell
-Set-Location -LiteralPath $PackageRoot
-& ".\EMKE AI Marker.exe" --self-test --report ".\self-test.txt"
-$LASTEXITCODE
-Get-Content .\self-test.txt
-```
-
-Expected exit code: `0`
-
-Expected final line: `Result=ok`
-
-Record the exit code and the complete sanitized report. `pass` requires both
-expected values and report versions matching the artifact metadata. A missing
-host, missing verified ZIP, nonzero exit, missing report, or wrong final line
-cannot be recorded as a pass.
-
 ## Fourteen GUI/media steps
 
 | ID | Acceptance item |
@@ -147,15 +126,46 @@ if (Test-Path -LiteralPath $ExtractRoot) {
   throw "Use a new empty extraction directory; do not merge extractions."
 }
 Expand-Archive -LiteralPath $ZipPath -DestinationPath $ExtractRoot
-Get-ChildItem -LiteralPath $PackageRoot -Force
+
+$RequiredFiles = @(
+  "EMKE AI Marker.exe",
+  "使用说明.txt",
+  "LICENSE.txt",
+  "THIRD_PARTY_NOTICES.txt",
+  "exiftool\exiftool.exe",
+  "exiftool\exiftool-manifest.json",
+  "licenses\dotnet\LICENSE.txt",
+  "licenses\dotnet\ThirdPartyNotices.txt"
+)
+$RequiredEmptyDirectories = @(
+  "示例输出\EMKE 已标记"
+)
+
+foreach ($RelativePath in $RequiredFiles) {
+  $RequiredPath = Join-Path $PackageRoot $RelativePath
+  if (-not (Test-Path -LiteralPath $RequiredPath -PathType Leaf)) {
+    throw "Required package file is missing or not a file: $RelativePath"
+  }
+}
+foreach ($RelativePath in $RequiredEmptyDirectories) {
+  $RequiredDirectory = Join-Path $PackageRoot $RelativePath
+  if (-not (Test-Path -LiteralPath $RequiredDirectory -PathType Container)) {
+    throw "Required package directory is missing or not a directory: $RelativePath"
+  }
+  $DirectoryEntries = @(Get-ChildItem -LiteralPath $RequiredDirectory -Force)
+  if ($DirectoryEntries.Count -ne 0) {
+    throw "Required example-output directory is not empty: $RelativePath"
+  }
+}
 ```
 
 Record: the sanitized ZIP filename, extraction root label, package-root name,
-and whether all release-manifest paths are present.
+the eight exact required file checks, and the exact required empty-directory
+check.
 
 Pass condition: extraction completes without error into a new directory and
-the whole package is available, including the app, instructions, notices,
-licenses, ExifTool payload/manifest, and empty example-output directory.
+all eight nested release-manifest file paths are `Leaf` files; the required
+`示例输出\EMKE 已标记` path is a `Container` directory and has zero entries.
 
 ### Step 2 — Compare ZIP checksum
 
@@ -170,14 +180,49 @@ $ActualZipHash
 if ($ActualZipHash -ne $ExpectedZipHash) {
   throw "Product ZIP SHA-256 does not match SHA256SUMS.txt."
 }
+
+$AppFileVersion = (Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion
+$ExifToolVersion = (& $ExifToolPath -ver).Trim()
+$AppFileVersion
+$ExifToolVersion
+if ([string]::IsNullOrWhiteSpace($AppFileVersion)) {
+  throw "Extracted app file version is empty."
+}
+if ($ExifToolVersion -ne "13.59") {
+  throw "Extracted ExifTool version is not 13.59."
+}
 ```
 
 Record: the exact ZIP filename, expected SHA-256, actual SHA-256, and comparison
-result.
+result. Only after the comparison succeeds, record `$AppFileVersion` and
+`$ExifToolVersion` in the required metadata table.
 
 Pass condition: the filename is the intended product ZIP and both 64-character
-SHA-256 values are identical. A deterministic test-fixture ZIP hash is not a
-product artifact identity.
+SHA-256 values are identical; the extracted app has a nonempty file version;
+and the extracted ExifTool reports exactly `13.59`. A deterministic
+test-fixture ZIP hash is not a product artifact identity.
+
+### Headless self-test — after Step 2
+
+Run only after step 1 has validated the fully extracted package structure and
+step 2 has matched the ZIP checksum and recorded both package versions. Do not
+run the executable from inside the ZIP:
+
+```powershell
+Set-Location -LiteralPath $PackageRoot
+& ".\EMKE AI Marker.exe" --self-test --report ".\self-test.txt"
+$LASTEXITCODE
+Get-Content .\self-test.txt
+```
+
+Expected exit code: `0`
+
+Expected final line: `Result=ok`
+
+Record the exit code and the complete sanitized report. `pass` requires both
+expected values and report versions matching the artifact metadata. A missing
+host, missing verified ZIP, nonzero exit, missing report, or wrong final line
+cannot be recorded as a pass.
 
 ### Step 3 — Launch the extracted app
 
@@ -282,9 +327,42 @@ for source-hash evidence.
 
 ### Step 8 — Verify outputs read-only
 
-PowerShell / action: clear the list, add all four `$OutputFiles`, click
-“只读验证”, and wait for completion. Then independently inspect fields and raw
-XMP with the package ExifTool:
+PowerShell / action: before adding outputs or clicking “只读验证”, require the
+four expected files and capture their exact hashes:
+
+```powershell
+$OutputFiles = Get-ChildItem -LiteralPath $OutputRoot -File |
+  Where-Object Extension -in ".jpg", ".jpeg", ".png", ".mp4" |
+  Sort-Object Name
+if ($OutputFiles.Count -ne 4) {
+  throw "Read-only verification requires exactly four controlled outputs."
+}
+$BeforeOutputHashes = @{}
+foreach ($OutputFile in $OutputFiles) {
+  $BeforeOutputHashes[$OutputFile.Name] =
+    (Get-FileHash -LiteralPath $OutputFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+}
+```
+
+Clear the list, add all four `$OutputFiles`, click “只读验证”, and wait for
+completion. Before any independent ExifTool inspection, recalculate each hash
+and print the equality evidence:
+
+```powershell
+$AfterOutputHashes = @{}
+foreach ($OutputFile in $OutputFiles) {
+  $AfterOutputHashes[$OutputFile.Name] =
+    (Get-FileHash -LiteralPath $OutputFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+  [pscustomobject]@{
+    File = $OutputFile.Name
+    Before = $BeforeOutputHashes[$OutputFile.Name]
+    After = $AfterOutputHashes[$OutputFile.Name]
+    Equal = ($AfterOutputHashes[$OutputFile.Name] -eq $BeforeOutputHashes[$OutputFile.Name])
+  }
+}
+```
+
+Then independently inspect fields and raw XMP with the package ExifTool:
 
 ```powershell
 & $ExifToolPath -G1 -s -XMP-dc:Subject -- $OutputFiles.FullName
@@ -294,14 +372,14 @@ foreach ($OutputFile in $OutputFiles) {
 }
 ```
 
-Record: per-file read-only status, `XMP-dc:Subject` values, raw-XMP evidence for
-formal Dublin Core/RDF namespaces and `dc:subject/rdf:Bag/rdf:li`, and any
-write-like side effect.
+Record: the File/Before/After/Equal row for every output, per-file read-only
+status, `XMP-dc:Subject` values, raw-XMP evidence for formal Dublin Core/RDF
+namespaces and `dc:subject/rdf:Bag/rdf:li`, and any write-like side effect.
 
-Pass condition: all four report verification success, the exact
-case-sensitive value `contains-synthetic-performer` is in the formal
-`rdf:Bag/rdf:li`, the pre-existing subject remains, and read-only verification
-does not modify media.
+Pass condition: all four output SHA-256 values are unchanged and every equality
+row is `True`; all four report verification success; the exact case-sensitive
+value `contains-synthetic-performer` is in the formal `rdf:Bag/rdf:li`; and the
+pre-existing subject remains.
 
 ### Step 9 — Inspect CSV columns and ExifTool version
 

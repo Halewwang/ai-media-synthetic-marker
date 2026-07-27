@@ -81,6 +81,110 @@ public sealed class WindowsAcceptanceDocumentTests
     }
 
     [Fact]
+    public void Checklist_reads_package_metadata_only_after_exact_extraction_and_checksum()
+    {
+        string checklist = Read("docs/validation/windows-11-x64-smoke.md");
+        string initialization = Section(checklist, "## Required metadata");
+        string extraction = Section(checklist, "### Step 1 —");
+        string checksum = Section(checklist, "### Step 2 —");
+
+        Assert.DoesNotContain(
+            "(Get-Item -LiteralPath $AppPath)",
+            initialization,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "& $ExifToolPath -ver",
+            initialization,
+            StringComparison.Ordinal);
+
+        using JsonDocument manifest = JsonDocument.Parse(
+            Read("packaging/release-manifest.json"));
+        string[] requiredPaths = manifest.RootElement
+            .GetProperty("required_paths")
+            .EnumerateArray()
+            .Select(item => item.GetString()!)
+            .ToArray();
+        string[] requiredFiles = requiredPaths
+            .Where(path => !path.EndsWith('/'))
+            .ToArray();
+        string[] requiredDirectories = requiredPaths
+            .Where(path => path.EndsWith('/'))
+            .ToArray();
+        Assert.Equal(8, requiredFiles.Length);
+        Assert.Single(requiredDirectories);
+        Assert.All(
+            requiredFiles,
+            path => Assert.Contains(
+                $"\"{path.Replace('/', '\\')}\"",
+                extraction,
+                StringComparison.Ordinal));
+        Assert.Contains("$RequiredFiles", extraction, StringComparison.Ordinal);
+        Assert.Contains(
+            "Test-Path -LiteralPath $RequiredPath -PathType Leaf",
+            extraction,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            $"\"{requiredDirectories[0].TrimEnd('/').Replace('/', '\\')}\"",
+            extraction,
+            StringComparison.Ordinal);
+        Assert.Contains("$RequiredEmptyDirectories", extraction, StringComparison.Ordinal);
+        Assert.Contains(
+            "Test-Path -LiteralPath $RequiredDirectory -PathType Container",
+            extraction,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Get-ChildItem -LiteralPath $RequiredDirectory -Force",
+            extraction,
+            StringComparison.Ordinal);
+
+        Assert.Contains(
+            "(Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion",
+            checksum,
+            StringComparison.Ordinal);
+        Assert.Contains("& $ExifToolPath -ver", checksum, StringComparison.Ordinal);
+        int expand = checklist.IndexOf("Expand-Archive", StringComparison.Ordinal);
+        int hashComparison = checklist.IndexOf(
+            "if ($ActualZipHash -ne $ExpectedZipHash)",
+            StringComparison.Ordinal);
+        int appVersion = checklist.IndexOf(
+            "(Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion",
+            StringComparison.Ordinal);
+        int exifToolVersion = checklist.IndexOf(
+            "& $ExifToolPath -ver",
+            StringComparison.Ordinal);
+        Assert.True(expand >= 0);
+        Assert.True(hashComparison > expand);
+        Assert.True(appVersion > hashComparison);
+        Assert.True(exifToolVersion > hashComparison);
+    }
+
+    [Fact]
+    public void Read_only_step_proves_every_output_hash_is_unchanged()
+    {
+        string checklist = Read("docs/validation/windows-11-x64-smoke.md");
+        string readOnly = Section(checklist, "### Step 8 —");
+
+        Assert.Contains("$BeforeOutputHashes = @{}", readOnly, StringComparison.Ordinal);
+        Assert.Contains("$AfterOutputHashes = @{}", readOnly, StringComparison.Ordinal);
+        Assert.Contains(
+            "Before = $BeforeOutputHashes[$OutputFile.Name]",
+            readOnly,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "After = $AfterOutputHashes[$OutputFile.Name]",
+            readOnly,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Equal = ($AfterOutputHashes[$OutputFile.Name] -eq $BeforeOutputHashes[$OutputFile.Name])",
+            readOnly,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "all four output SHA-256 values are unchanged",
+            readOnly,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Blocked_result_records_every_item_and_cannot_satisfy_the_acceptance_gate()
     {
         string result = Read("docs/validation/windows-11-x64-smoke-result.md");
