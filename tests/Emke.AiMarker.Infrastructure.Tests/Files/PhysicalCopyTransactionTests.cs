@@ -30,6 +30,8 @@ public sealed class PhysicalCopyTransactionTests
                 plan.TempPath,
                 TestContext.Current.CancellationToken));
         Assert.False(File.Exists(plan.FinalPath));
+
+        await transaction.RollbackAsync(media);
     }
 
     [Theory]
@@ -62,10 +64,21 @@ public sealed class PhysicalCopyTransactionTests
             plan,
             RunMode.MarkCopies,
             TestContext.Current.CancellationToken);
-        await File.WriteAllBytesAsync(
+        await using (var writer = new FileStream(
             plan.TempPath,
-            [4, 5, 6],
-            TestContext.Current.CancellationToken);
+            new FileStreamOptions
+            {
+                Mode = FileMode.Create,
+                Access = FileAccess.Write,
+                Share = FileShare.ReadWrite | FileShare.Delete,
+                Options = FileOptions.Asynchronous,
+            }))
+        {
+            await writer.WriteAsync(
+                new byte[] { 4, 5, 6 },
+                TestContext.Current.CancellationToken);
+        }
+
         await transaction.SealVerifiedAsync(
             media,
             TestContext.Current.CancellationToken);
@@ -119,6 +132,8 @@ public sealed class PhysicalCopyTransactionTests
             await File.ReadAllBytesAsync(
                 plan.SourcePath,
                 TestContext.Current.CancellationToken));
+
+        await transaction.RollbackAsync(media);
     }
 
     [Fact]
@@ -268,10 +283,11 @@ public sealed class PhysicalCopyTransactionTests
     }
 
     [Fact]
-    public async Task Commit_refuses_a_foreign_file_substituted_after_preparation()
+    public async Task Commit_substitution_is_blocked_on_Windows_or_refused_elsewhere()
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var substitution = new SubstitutionAttempt();
         var transaction = new PhysicalCopyTransaction();
         PreparedMedia media = await transaction.PrepareAsync(
             plan,
@@ -280,54 +296,100 @@ public sealed class PhysicalCopyTransactionTests
         await transaction.SealVerifiedAsync(
             media,
             TestContext.Current.CancellationToken);
-        File.Delete(plan.TempPath);
-        await File.WriteAllBytesAsync(
-            plan.TempPath,
-            [9, 8, 7],
-            TestContext.Current.CancellationToken);
+        substitution.ReplaceWithForeignBytes(plan.TempPath);
 
-        IOException exception = await Assert.ThrowsAsync<IOException>(
-            () => transaction.CommitAsync(
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.False(substitution.DeleteSucceeded);
+            Assert.False(substitution.Succeeded);
+            Assert.IsType<IOException>(substitution.DeniedBy);
+
+            await transaction.CommitAsync(
                 media,
-                TestContext.Current.CancellationToken));
+                TestContext.Current.CancellationToken);
 
-        Assert.Contains("所有权", exception.Message);
-        Assert.False(File.Exists(plan.FinalPath));
-        Assert.Equal(
-            [9, 8, 7],
-            await File.ReadAllBytesAsync(
-                plan.TempPath,
-                TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(plan.TempPath));
+            Assert.Equal(
+                [1, 2, 3],
+                await File.ReadAllBytesAsync(
+                    plan.FinalPath,
+                    TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            Assert.True(substitution.DeleteSucceeded);
+            Assert.True(substitution.Succeeded);
+            Assert.Null(substitution.DeniedBy);
+
+            IOException exception = await Assert.ThrowsAsync<IOException>(
+                () => transaction.CommitAsync(
+                    media,
+                    TestContext.Current.CancellationToken));
+
+            Assert.Contains("所有权", exception.Message);
+            Assert.False(File.Exists(plan.FinalPath));
+            Assert.Equal(
+                [9, 8, 7],
+                await File.ReadAllBytesAsync(
+                    plan.TempPath,
+                    TestContext.Current.CancellationToken));
+        }
+
+        await transaction.RollbackAsync(media);
     }
 
     [Fact]
-    public async Task Seal_refuses_substitution_after_verification_before_seal()
+    public async Task Seal_substitution_is_blocked_on_Windows_or_refused_elsewhere()
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var substitution = new SubstitutionAttempt();
         var transaction = new PhysicalCopyTransaction();
         PreparedMedia media = await transaction.PrepareAsync(
             plan,
             RunMode.MarkCopies,
             TestContext.Current.CancellationToken);
-        File.Delete(plan.TempPath);
-        await File.WriteAllBytesAsync(
-            plan.TempPath,
-            [9, 8, 7],
-            TestContext.Current.CancellationToken);
+        substitution.ReplaceWithForeignBytes(plan.TempPath);
 
-        IOException exception = await Assert.ThrowsAsync<IOException>(
-            () => transaction.SealVerifiedAsync(
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.False(substitution.DeleteSucceeded);
+            Assert.False(substitution.Succeeded);
+            Assert.IsType<IOException>(substitution.DeniedBy);
+
+            await transaction.SealVerifiedAsync(
                 media,
-                TestContext.Current.CancellationToken));
+                TestContext.Current.CancellationToken);
 
-        Assert.Contains("所有权", exception.Message);
-        Assert.Equal(
-            [9, 8, 7],
-            await File.ReadAllBytesAsync(
-                plan.TempPath,
-                TestContext.Current.CancellationToken));
-        Assert.False(File.Exists(plan.FinalPath));
+            Assert.True(File.Exists(plan.TempPath));
+        }
+        else
+        {
+            Assert.True(substitution.DeleteSucceeded);
+            Assert.True(substitution.Succeeded);
+            Assert.Null(substitution.DeniedBy);
+
+            IOException exception = await Assert.ThrowsAsync<IOException>(
+                () => transaction.SealVerifiedAsync(
+                    media,
+                    TestContext.Current.CancellationToken));
+
+            Assert.Contains("所有权", exception.Message);
+            Assert.Equal(
+                [9, 8, 7],
+                await File.ReadAllBytesAsync(
+                    plan.TempPath,
+                    TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(plan.FinalPath));
+        }
+
+        await transaction.RollbackAsync(media);
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.False(File.Exists(plan.TempPath));
+            Assert.False(File.Exists(plan.FinalPath));
+        }
     }
 
     [Fact]
@@ -349,15 +411,18 @@ public sealed class PhysicalCopyTransactionTests
         Assert.Contains("验证", exception.Message);
         Assert.False(File.Exists(plan.FinalPath));
         Assert.True(File.Exists(plan.TempPath));
+
+        await transaction.RollbackAsync(media);
     }
 
     [Fact]
-    public async Task Commit_boundary_substitution_never_reaches_final_output()
+    public async Task Commit_boundary_blocks_substitution_on_Windows_and_never_commits_foreign_bytes()
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var substitution = new SubstitutionAttempt();
         var transaction = new PhysicalCopyTransaction(
-            atCommitBoundary: ReplaceWithForeignBytes);
+            atCommitBoundary: substitution.ReplaceWithForeignBytes);
         PreparedMedia media = await transaction.PrepareAsync(
             plan,
             RunMode.MarkCopies,
@@ -366,54 +431,90 @@ public sealed class PhysicalCopyTransactionTests
             media,
             TestContext.Current.CancellationToken);
 
-        IOException exception = await Assert.ThrowsAsync<IOException>(
-            () => transaction.CommitAsync(
+        if (OperatingSystem.IsWindows())
+        {
+            await transaction.CommitAsync(
                 media,
-                TestContext.Current.CancellationToken));
+                TestContext.Current.CancellationToken);
 
-        Assert.Contains("所有权", exception.Message);
-        Assert.False(File.Exists(plan.FinalPath));
-        Assert.Equal(
-            [9, 8, 7],
-            await File.ReadAllBytesAsync(
-                plan.TempPath,
-                TestContext.Current.CancellationToken));
+            Assert.False(substitution.DeleteSucceeded);
+            Assert.False(substitution.Succeeded);
+            Assert.IsType<IOException>(substitution.DeniedBy);
+            Assert.False(File.Exists(plan.TempPath));
+            Assert.Equal(
+                [1, 2, 3],
+                await File.ReadAllBytesAsync(
+                    plan.FinalPath,
+                    TestContext.Current.CancellationToken));
+        }
+        else
+        {
+            IOException exception = await Assert.ThrowsAsync<IOException>(
+                () => transaction.CommitAsync(
+                    media,
+                    TestContext.Current.CancellationToken));
+
+            Assert.True(substitution.DeleteSucceeded);
+            Assert.True(substitution.Succeeded);
+            Assert.Null(substitution.DeniedBy);
+            Assert.Contains("所有权", exception.Message);
+            Assert.False(File.Exists(plan.FinalPath));
+            Assert.Equal(
+                [9, 8, 7],
+                await File.ReadAllBytesAsync(
+                    plan.TempPath,
+                    TestContext.Current.CancellationToken));
+        }
+
+        await transaction.RollbackAsync(media);
     }
 
     [Fact]
-    public async Task Rollback_preserves_a_foreign_file_substituted_after_preparation()
+    public async Task Rollback_substitution_is_blocked_on_Windows_or_preserved_elsewhere()
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var substitution = new SubstitutionAttempt();
         var transaction = new PhysicalCopyTransaction();
         PreparedMedia media = await transaction.PrepareAsync(
             plan,
             RunMode.MarkCopies,
             TestContext.Current.CancellationToken);
-        File.Delete(plan.TempPath);
-        await File.WriteAllBytesAsync(
-            plan.TempPath,
-            [9, 8, 7],
-            TestContext.Current.CancellationToken);
+        substitution.ReplaceWithForeignBytes(plan.TempPath);
 
         await transaction.RollbackAsync(media);
 
-        Assert.Equal(
-            [9, 8, 7],
-            await File.ReadAllBytesAsync(
-                plan.TempPath,
-                TestContext.Current.CancellationToken));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.False(substitution.DeleteSucceeded);
+            Assert.False(substitution.Succeeded);
+            Assert.IsType<IOException>(substitution.DeniedBy);
+            Assert.False(File.Exists(plan.TempPath));
+        }
+        else
+        {
+            Assert.True(substitution.DeleteSucceeded);
+            Assert.True(substitution.Succeeded);
+            Assert.Null(substitution.DeniedBy);
+            Assert.Equal(
+                [9, 8, 7],
+                await File.ReadAllBytesAsync(
+                    plan.TempPath,
+                    TestContext.Current.CancellationToken));
+        }
+
         Assert.True(File.Exists(plan.SourcePath));
         Assert.False(File.Exists(plan.FinalPath));
     }
 
     [Fact]
-    public async Task Rollback_boundary_substitution_is_never_deleted()
+    public async Task Rollback_boundary_blocks_substitution_on_Windows_and_never_deletes_foreign_bytes()
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var substitution = new SubstitutionAttempt();
         var transaction = new PhysicalCopyTransaction(
-            atRollbackBoundary: ReplaceWithForeignBytes);
+            atRollbackBoundary: substitution.ReplaceWithForeignBytes);
         PreparedMedia media = await transaction.PrepareAsync(
             plan,
             RunMode.MarkCopies,
@@ -421,11 +522,25 @@ public sealed class PhysicalCopyTransactionTests
 
         await transaction.RollbackAsync(media);
 
-        Assert.Equal(
-            [9, 8, 7],
-            await File.ReadAllBytesAsync(
-                plan.TempPath,
-                TestContext.Current.CancellationToken));
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.False(substitution.DeleteSucceeded);
+            Assert.False(substitution.Succeeded);
+            Assert.IsType<IOException>(substitution.DeniedBy);
+            Assert.False(File.Exists(plan.TempPath));
+        }
+        else
+        {
+            Assert.True(substitution.DeleteSucceeded);
+            Assert.True(substitution.Succeeded);
+            Assert.Null(substitution.DeniedBy);
+            Assert.Equal(
+                [9, 8, 7],
+                await File.ReadAllBytesAsync(
+                    plan.TempPath,
+                    TestContext.Current.CancellationToken));
+        }
+
         Assert.True(File.Exists(plan.SourcePath));
         Assert.False(File.Exists(plan.FinalPath));
     }
@@ -489,9 +604,27 @@ public sealed class PhysicalCopyTransactionTests
         }
     }
 
-    private static void ReplaceWithForeignBytes(string path)
+    private sealed class SubstitutionAttempt
     {
-        File.Delete(path);
-        File.WriteAllBytes(path, [9, 8, 7]);
+        public Exception? DeniedBy { get; private set; }
+
+        public bool DeleteSucceeded { get; private set; }
+
+        public bool Succeeded { get; private set; }
+
+        public void ReplaceWithForeignBytes(string path)
+        {
+            try
+            {
+                File.Delete(path);
+                DeleteSucceeded = true;
+                File.WriteAllBytes(path, [9, 8, 7]);
+                Succeeded = true;
+            }
+            catch (IOException exception)
+            {
+                DeniedBy = exception;
+            }
+        }
     }
 }
