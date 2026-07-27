@@ -92,6 +92,39 @@ public sealed partial class BrandResourceTests
     }
 
     [Fact]
+    public void Primary_and_secondary_buttons_use_distinct_uncropped_focus_visuals()
+    {
+        XDocument controls = XDocument.Load(
+            FromRoot("src", "Emke.AiMarker.App", "Resources", "Controls.xaml"));
+
+        XElement secondaryFocus = FindStyle(controls, "BrandFocusVisual");
+        XElement primaryFocus = FindStyle(controls, "PrimaryButtonFocusVisual");
+        XElement buttonStyle = controls.Root!
+            .Elements(Presentation + "Style")
+            .Single(element =>
+                (string?)element.Attribute("TargetType") == "Button"
+                && element.Attribute(Xaml + "Key") is null);
+        XElement primaryButtonStyle = FindStyle(controls, "PrimaryButtonStyle");
+
+        AssertSetter(
+            buttonStyle,
+            "FocusVisualStyle",
+            "{StaticResource BrandFocusVisual}");
+        AssertSetter(
+            primaryButtonStyle,
+            "FocusVisualStyle",
+            "{StaticResource PrimaryButtonFocusVisual}");
+        AssertFocusBorders(
+            secondaryFocus,
+            "{StaticResource BrandAccentBrush}",
+            "White");
+        AssertFocusBorders(
+            primaryFocus,
+            "White",
+            "{StaticResource PrimaryTextBrush}");
+    }
+
+    [Fact]
     public void Chinese_resources_cover_the_visible_shell_contract()
     {
         XDocument strings = XDocument.Load(
@@ -220,6 +253,44 @@ public sealed partial class BrandResourceTests
         Assert.Equal(
             $"{{StaticResource {colorKey}}}",
             (string?)resource.Attribute("Color"));
+    }
+
+    private static XElement FindStyle(XDocument document, string key) =>
+        document.Root!
+            .Elements(Presentation + "Style")
+            .Single(element => (string?)element.Attribute(Xaml + "Key") == key);
+
+    private static void AssertSetter(
+        XElement style,
+        string property,
+        string expectedValue)
+    {
+        XElement setter = style
+            .Elements(Presentation + "Setter")
+            .Single(element => (string?)element.Attribute("Property") == property);
+        Assert.Equal(expectedValue, (string?)setter.Attribute("Value"));
+    }
+
+    private static void AssertFocusBorders(
+        XElement style,
+        string outerBrush,
+        string innerBrush)
+    {
+        XElement[] borders = style
+            .Descendants(Presentation + "Border")
+            .ToArray();
+
+        Assert.Equal(2, borders.Length);
+        Assert.Equal(outerBrush, (string?)borders[0].Attribute("BorderBrush"));
+        Assert.Equal(innerBrush, (string?)borders[1].Attribute("BorderBrush"));
+        Assert.All(
+            borders,
+            border =>
+            {
+                string margin = (string?)border.Attribute("Margin") ?? "0";
+                Assert.DoesNotContain("-", margin, StringComparison.Ordinal);
+                Assert.NotEqual("0", (string?)border.Attribute("BorderThickness"));
+            });
     }
 
     private static string FromRoot(params string[] components) =>

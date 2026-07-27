@@ -224,3 +224,62 @@ Not proven on this host:
 Windows workstation inspection at 100%, 150%, and 200% remains an explicit
 later acceptance gate and must reject any cropped Logo, clipped Chinese text,
 missing focus ring, or horizontal scrolling.
+
+---
+
+## Fix round 1/5 — distinguish primary-button keyboard focus
+
+Review found that the original `BrandFocusVisual` used the same teal brush as
+the primary button background. Because the single ring was inset with
+`Margin="2"`, keyboard focus on a primary action could visually merge into the
+button fill.
+
+### TDD RED
+
+The static focus contract was added before changing `Controls.xaml`. It
+requires:
+
+- secondary buttons to use `BrandFocusVisual`;
+- primary buttons to override that with an independent
+  `PrimaryButtonFocusVisual`;
+- secondary focus to combine a teal ring with white separation;
+- primary focus to combine a white ring with a dark inner ring;
+- exactly two nonzero borders per focus visual and no negative Margin.
+
+The host-executable contract failed against the original resources with the
+intended message:
+
+```text
+AssertionError: primary action lacks an independent high-contrast focus visual
+```
+
+### GREEN
+
+`BrandFocusVisual` now renders an inset two-pixel teal border and a separate
+white inner border. `PrimaryButtonFocusVisual` renders an inset two-pixel white
+border and a separate dark inner border, and `PrimaryButtonStyle` explicitly
+selects it. All border margins are positive (`1` and `4`), so this fix does not
+depend on a negative external margin that a parent could clip.
+
+The same host-static contract then reported:
+
+```text
+Task 8 focus-static contract: PASS
+```
+
+Verification after the fix:
+
+- App Release cross-build: succeeded, 0 warnings / 0 errors.
+- App.Tests Release cross-build: succeeded, 0 warnings / 0 errors.
+- Core: 52 passed, 0 failed.
+- Infrastructure: 78 passed, 0 failed.
+- Changed-file format check: passed.
+- `git diff --check`: passed.
+
+Only `Controls.xaml`, its static resource test, and this report changed. The
+registered ShellService missing-path English-message Minor was intentionally
+not changed.
+
+The static structure check proves the resource contract, not actual rendering.
+Keyboard focus contrast, clipping, high-contrast-mode behavior, and DPI
+behavior still require Windows visual inspection.
