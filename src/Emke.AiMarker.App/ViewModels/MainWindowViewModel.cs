@@ -23,6 +23,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private readonly IFileSelectionService fileSelection;
     private readonly IUserPromptService prompts;
     private readonly IShellService shell;
+    private readonly IAppText text;
     private readonly string logDirectory;
     private readonly List<string> selectedPaths = [];
     private WorkspaceState state;
@@ -37,7 +38,7 @@ public sealed class MainWindowViewModel : ObservableObject
     private string outputPath = "";
     private bool isDetailsExpanded;
     private bool isOverwriteOriginals;
-    private string summaryMessage = "请选择需要处理的媒体文件或文件夹。";
+    private string summaryMessage;
     private StopController? activeStop;
     private bool stopRequested;
     private RunMode? completedMode;
@@ -51,6 +52,7 @@ public sealed class MainWindowViewModel : ObservableObject
         IFileSelectionService fileSelection,
         IUserPromptService prompts,
         IShellService shell,
+        IAppText text,
         string logDirectory)
     {
         this.scanner = scanner ?? throw new ArgumentNullException(nameof(scanner));
@@ -62,8 +64,10 @@ public sealed class MainWindowViewModel : ObservableObject
             ?? throw new ArgumentNullException(nameof(fileSelection));
         this.prompts = prompts ?? throw new ArgumentNullException(nameof(prompts));
         this.shell = shell ?? throw new ArgumentNullException(nameof(shell));
+        this.text = text ?? throw new ArgumentNullException(nameof(text));
         ArgumentException.ThrowIfNullOrWhiteSpace(logDirectory);
         this.logDirectory = logDirectory;
+        summaryMessage = text.Get("InitialSelectionPrompt");
 
         AddFilesCommand = new(
             AddSelectedFilesAsync,
@@ -298,7 +302,9 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             0 => "",
             1 => outputDirectories[0],
-            _ => $"多个输出位置（{outputDirectories.Count}）",
+            _ => text.Format(
+                "MultipleOutputLocationsFormat",
+                outputDirectories.Count),
         };
         Interlocked.Increment(ref workspaceRevision);
 
@@ -306,15 +312,19 @@ public sealed class MainWindowViewModel : ObservableObject
         {
             State = WorkspaceState.Empty;
             SummaryMessage = ScanIssues.Count == 0
-                ? "未发现支持的媒体文件。"
-                : $"未发现可处理媒体；{ScanIssues.Count} 个路径存在问题。";
+                ? text.Get("NoSupportedMedia")
+                : text.Format(
+                    "NoProcessableMediaWithIssuesFormat",
+                    ScanIssues.Count);
         }
         else
         {
             State = WorkspaceState.Ready;
-            SummaryMessage =
-                $"已选择 {ProcessableCount} 个可处理媒体，共 {FormatBytes(TotalBytes)}；"
-                + $"{SkippedCount} 个项目已跳过或存在问题。";
+            SummaryMessage = text.Format(
+                "ReadySummaryFormat",
+                ProcessableCount,
+                FormatBytes(TotalBytes),
+                SkippedCount);
         }
 
         NotifyCommands();
@@ -334,8 +344,8 @@ public sealed class MainWindowViewModel : ObservableObject
             if (!storage.IsReady)
             {
                 string message = string.IsNullOrWhiteSpace(storage.Error)
-                    ? "输出目录检查失败。"
-                    : $"无法开始安全副本处理：{storage.Error}";
+                    ? text.Get("StorageCheckFailed")
+                    : text.Format("SafeCopyStorageFailedFormat", storage.Error);
                 SummaryMessage = message;
                 await prompts.ShowErrorAsync(message);
                 return;
@@ -352,7 +362,7 @@ public sealed class MainWindowViewModel : ObservableObject
         activeStop = new StopController();
         Interlocked.Increment(ref workspaceRevision);
         State = WorkspaceState.Running;
-        SummaryMessage = $"正在处理 0/{TotalCount}。";
+        SummaryMessage = text.Format("RunningProgressFormat", 0, TotalCount);
 
         try
         {
@@ -389,7 +399,10 @@ public sealed class MainWindowViewModel : ObservableObject
         CompletedCount = progress.Completed;
         TotalCount = progress.Total;
         CurrentRelativePath = progress.CurrentRelativePath;
-        SummaryMessage = $"正在处理 {CompletedCount}/{TotalCount}。";
+        SummaryMessage = text.Format(
+            "RunningProgressFormat",
+            CompletedCount,
+            TotalCount);
     }
 
     private Task AddSelectedFilesAsync() =>
@@ -427,7 +440,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
         activeStop.RequestStop();
         stopRequested = true;
-        SummaryMessage = "已请求安全停止；当前文件完成后将不再开始新文件。";
+        SummaryMessage = text.Get("SafeStopRequested");
         SafeStopCommand.NotifyCanExecuteChanged();
         return Task.CompletedTask;
     }
@@ -448,7 +461,7 @@ public sealed class MainWindowViewModel : ObservableObject
         TotalCount = 0;
         IsDetailsExpanded = false;
         IsOverwriteOriginals = false;
-        SummaryMessage = "请选择需要处理的媒体文件或文件夹。";
+        SummaryMessage = text.Get("InitialSelectionPrompt");
         Interlocked.Increment(ref workspaceRevision);
         State = WorkspaceState.Empty;
         NotifyCommands();
@@ -476,7 +489,7 @@ public sealed class MainWindowViewModel : ObservableObject
         string detail = string.IsNullOrWhiteSpace(exception.Message)
             ? exception.GetType().Name
             : exception.Message;
-        SummaryMessage = $"操作失败：{detail}";
+        SummaryMessage = text.Format("OperationFailedFormat", detail);
         await prompts.ShowErrorAsync(SummaryMessage);
     }
 
@@ -542,19 +555,21 @@ public sealed class MainWindowViewModel : ObservableObject
         ToggleDetailsCommand?.NotifyCanExecuteChanged();
     }
 
-    private static string BuildCompletionSummary(RunSummary summary)
+    private string BuildCompletionSummary(RunSummary summary)
     {
         int failed = summary.Results.Count(result => result.Status == ProcessStatus.Failed);
-        string message =
-            $"处理完成：{summary.Results.Count} 个结果，{failed} 个失败。";
+        string message = text.Format(
+            "CompletionSummaryFormat",
+            summary.Results.Count,
+            failed);
         if (summary.Stopped)
         {
-            message += " 已按用户请求安全停止。";
+            message += text.Get("CompletionStoppedSuffix");
         }
 
         if (!summary.LogWritten)
         {
-            message += " CSV 运行记录写入失败。";
+            message += text.Get("CompletionLogFailedSuffix");
         }
 
         return message;

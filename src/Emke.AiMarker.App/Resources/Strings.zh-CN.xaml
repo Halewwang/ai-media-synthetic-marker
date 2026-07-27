@@ -1,0 +1,48 @@
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+    <sys:String x:Key="AppName">EMKE AI Marker</sys:String>
+    <sys:String x:Key="WindowTitle">EMKE AI Marker</sys:String>
+    <sys:String x:Key="SettingsButton">设置</sys:String>
+    <sys:String x:Key="WorkspaceTitle">添加合成表演者披露标记</sys:String>
+    <sys:String x:Key="OfflinePrivacyCopy">完全在本机离线处理，不上传媒体、不连接亚马逊，也不发送遥测数据。</sys:String>
+    <sys:String x:Key="DropTargetTitle">将媒体文件或文件夹拖到这里</sys:String>
+    <sys:String x:Key="SupportedFormats">支持 JPG、JPEG、PNG 和 MP4</sys:String>
+    <sys:String x:Key="SupportedMediaDialogFilter">支持的媒体|*.jpg;*.jpeg;*.png;*.mp4</sys:String>
+    <sys:String x:Key="AddFilesButton">添加文件</sys:String>
+    <sys:String x:Key="AddFolderButton">添加文件夹</sys:String>
+    <sys:String x:Key="MarkerLabel">将写入并严格验证以下标记</sys:String>
+    <sys:String x:Key="SafeCopyStatement">默认创建安全副本并保留原件；只读验证不会修改媒体，但会生成 CSV 运行记录。</sys:String>
+    <sys:String x:Key="FileDetails">所选文件详情</sys:String>
+    <sys:String x:Key="FileColumn">文件</sys:String>
+    <sys:String x:Key="StatusColumn">状态</sys:String>
+    <sys:String x:Key="ResultPending">待处理</sys:String>
+    <sys:String x:Key="StartMarkButton">开始标记</sys:String>
+    <sys:String x:Key="VerifyOnlyButton">只读验证</sys:String>
+    <sys:String x:Key="SafeStopButton">安全停止</sys:String>
+    <sys:String x:Key="OpenOutputButton">打开输出位置</sys:String>
+    <sys:String x:Key="OpenLogButton">打开运行记录</sys:String>
+    <sys:String x:Key="ResetButton">重新开始</sys:String>
+    <sys:String x:Key="AdvancedWarning">高级模式会直接修改原始媒体；每次运行都必须再次确认。</sys:String>
+    <sys:String x:Key="ErrorTitle">操作失败</sys:String>
+    <sys:String x:Key="ErrorDismissButton">知道了</sys:String>
+    <sys:String x:Key="ResultAdded">已新增标记</sys:String>
+    <sys:String x:Key="ResultCompliant">已严格合规</sys:String>
+    <sys:String x:Key="ResultUnmarked">未标记</sys:String>
+    <sys:String x:Key="ResultFailed">验证失败</sys:String>
+
+    <sys:String x:Key="InitialSelectionPrompt">请选择需要处理的媒体文件或文件夹。</sys:String>
+    <sys:String x:Key="MultipleOutputLocationsFormat">多个输出位置（{0}）</sys:String>
+    <sys:String x:Key="NoSupportedMedia">未发现支持的媒体文件。</sys:String>
+    <sys:String x:Key="NoProcessableMediaWithIssuesFormat">未发现可处理媒体；{0} 个路径存在问题。</sys:String>
+    <sys:String x:Key="ReadySummaryFormat">已选择 {0} 个可处理媒体，共 {1}；{2} 个项目已跳过或存在问题。</sys:String>
+    <sys:String x:Key="StorageCheckFailed">输出目录检查失败。</sys:String>
+    <sys:String x:Key="SafeCopyStorageFailedFormat">无法开始安全副本处理：{0}</sys:String>
+    <sys:String x:Key="RunningProgressFormat">正在处理 {0}/{1}。</sys:String>
+    <sys:String x:Key="SafeStopRequested">已请求安全停止；当前文件完成后将不再开始新文件。</sys:String>
+    <sys:String x:Key="OperationFailedFormat">操作失败：{0}</sys:String>
+    <sys:String x:Key="CompletionSummaryFormat">处理完成：{0} 个结果，{1} 个失败。</sys:String>
+    <sys:String x:Key="CompletionStoppedSuffix"> 已按用户请求安全停止。</sys:String>
+    <sys:String x:Key="CompletionLogFailedSuffix"> CSV 运行记录写入失败。</sys:String>
+</ResourceDictionary>

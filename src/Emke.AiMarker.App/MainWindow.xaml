@@ -1,11 +1,274 @@
-﻿<Window x:Class="Emke.AiMarker.App.MainWindow"
+<Window x:Class="Emke.AiMarker.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:Emke.AiMarker.App"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        xmlns:vm="clr-namespace:Emke.AiMarker.App.ViewModels"
+        Title="{DynamicResource WindowTitle}"
+        Width="820"
+        Height="700"
+        MinWidth="620"
+        MinHeight="520"
+        WindowStartupLocation="CenterScreen"
+        FontFamily="{StaticResource AppFontFamily}"
+        Foreground="{StaticResource PrimaryTextBrush}"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True">
+    <Grid Background="{StaticResource AppBackgroundBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0"
+                Padding="16,10"
+                Background="White"
+                BorderBrush="{StaticResource DividerBrush}"
+                BorderThickness="0,0,0,1">
+            <DockPanel LastChildFill="False">
+                <StackPanel DockPanel.Dock="Left"
+                            Orientation="Horizontal">
+                    <Image Width="27"
+                           Height="27"
+                           Source="Assets/emke-app-logo-32.png"
+                           Stretch="Uniform"
+                           AutomationProperties.Name="{DynamicResource AppName}" />
+                    <TextBlock Margin="9,0,0,0"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold"
+                               Text="{DynamicResource AppName}" />
+                </StackPanel>
+                <Button DockPanel.Dock="Right"
+                        Command="{Binding OpenSettingsCommand}"
+                        Content="{DynamicResource SettingsButton}"
+                        AutomationProperties.Name="{DynamicResource SettingsButton}" />
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <Grid MaxWidth="720"
+                  Margin="22"
+                  HorizontalAlignment="Center">
+                <StackPanel>
+                    <TextBlock FontSize="24"
+                               FontWeight="SemiBold"
+                               Text="{DynamicResource WorkspaceTitle}" />
+                    <TextBlock Margin="0,6,0,16"
+                               Text="{DynamicResource OfflinePrivacyCopy}"
+                               TextWrapping="Wrap" />
+
+                    <Border x:Name="DropTarget"
+                            Padding="20"
+                            AllowDrop="True"
+                            Background="White"
+                            BorderBrush="{StaticResource BrandAccentBrush}"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            DragOver="DropTarget_OnDragOver"
+                            Drop="DropTarget_OnDrop"
+                            AutomationProperties.Name="{DynamicResource DropTargetTitle}">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State}"
+                                                 Value="{x:Static vm:WorkspaceState.Empty}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding State}"
+                                                 Value="{x:Static vm:WorkspaceState.Ready}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel HorizontalAlignment="Center">
+                            <TextBlock HorizontalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       Text="{DynamicResource DropTargetTitle}"
+                                       TextAlignment="Center" />
+                            <TextBlock Margin="0,4,0,12"
+                                       HorizontalAlignment="Center"
+                                       Foreground="#586566"
+                                       Text="{DynamicResource SupportedFormats}" />
+                            <StackPanel HorizontalAlignment="Center"
+                                        Orientation="Horizontal">
+                                <Button Command="{Binding AddFilesCommand}"
+                                        Content="{DynamicResource AddFilesButton}"
+                                        AutomationProperties.Name="{DynamicResource AddFilesButton}" />
+                                <Button Margin="8,0,0,0"
+                                        Command="{Binding AddFolderCommand}"
+                                        Content="{DynamicResource AddFolderButton}"
+                                        AutomationProperties.Name="{DynamicResource AddFolderButton}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <StackPanel Margin="0,12,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State}"
+                                                 Value="{x:Static vm:WorkspaceState.Empty}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock Foreground="#586566"
+                                   Text="{Binding SummaryMessage}"
+                                   TextAlignment="Center"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Margin="0,16,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State}"
+                                                 Value="{x:Static vm:WorkspaceState.Ready}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <TextBlock FontWeight="SemiBold"
+                                   Text="{Binding SummaryMessage}"
+                                   TextWrapping="Wrap" />
+                        <TextBlock Margin="0,10,0,3"
+                                   Text="{DynamicResource MarkerLabel}" />
+                        <TextBox IsReadOnly="True"
+                                 Text="contains-synthetic-performer"
+                                 FocusVisualStyle="{StaticResource BrandFocusVisual}"
+                                 AutomationProperties.Name="{DynamicResource MarkerLabel}" />
+                        <Border Margin="0,12,0,0"
+                                Padding="12"
+                                Background="{StaticResource SafetyBackgroundBrush}"
+                                CornerRadius="8">
+                            <TextBlock Text="{DynamicResource SafeCopyStatement}"
+                                       TextWrapping="Wrap" />
+                        </Border>
+                        <Expander Margin="0,12,0,0"
+                                  Header="{DynamicResource FileDetails}"
+                                  IsExpanded="{Binding IsDetailsExpanded}"
+                                  FocusVisualStyle="{StaticResource BrandFocusVisual}"
+                                  AutomationProperties.Name="{DynamicResource FileDetails}">
+                            <DataGrid MaxHeight="180"
+                                      Margin="0,8,0,0"
+                                      AutoGenerateColumns="False"
+                                      CanUserAddRows="False"
+                                      CanUserDeleteRows="False"
+                                      CanUserReorderColumns="False"
+                                      HeadersVisibility="Column"
+                                      IsReadOnly="True"
+                                      ItemsSource="{Binding MediaItems}"
+                                      FocusVisualStyle="{StaticResource BrandFocusVisual}"
+                                      AutomationProperties.Name="{DynamicResource FileDetails}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Width="*"
+                                                        Header="{DynamicResource FileColumn}"
+                                                        Binding="{Binding RelativePath}" />
+                                    <DataGridTemplateColumn Width="120"
+                                                            Header="{DynamicResource StatusColumn}">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{DynamicResource ResultPending}" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Expander>
+                        <StackPanel Margin="0,16,0,0"
+                                    Orientation="Horizontal">
+                            <Button Style="{StaticResource PrimaryButtonStyle}"
+                                    Command="{Binding StartMarkCommand}"
+                                    Content="{DynamicResource StartMarkButton}"
+                                    AutomationProperties.Name="{DynamicResource StartMarkButton}" />
+                            <Button Margin="8,0,0,0"
+                                    Command="{Binding VerifyOnlyCommand}"
+                                    Content="{DynamicResource VerifyOnlyButton}"
+                                    AutomationProperties.Name="{DynamicResource VerifyOnlyButton}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Margin="0,16,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State}"
+                                                 Value="{x:Static vm:WorkspaceState.Running}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <Border Padding="16"
+                                Background="White"
+                                BorderBrush="{StaticResource DividerBrush}"
+                                BorderThickness="1"
+                                CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding CurrentRelativePath}"
+                                           TextTrimming="CharacterEllipsis" />
+                                <ProgressBar Margin="0,10,0,6"
+                                             Minimum="0"
+                                             Maximum="100"
+                                             Value="{Binding ProgressPercent}" />
+                                <TextBlock Text="{Binding SummaryMessage}"
+                                           TextWrapping="Wrap" />
+                                <Button Margin="0,12,0,0"
+                                        HorizontalAlignment="Left"
+                                        Command="{Binding SafeStopCommand}"
+                                        Content="{DynamicResource SafeStopButton}"
+                                        AutomationProperties.Name="{DynamicResource SafeStopButton}" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel Margin="0,16,0,0">
+                        <StackPanel.Style>
+                            <Style TargetType="StackPanel">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding State}"
+                                                 Value="{x:Static vm:WorkspaceState.Completed}">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </StackPanel.Style>
+                        <Border Padding="16"
+                                Background="{StaticResource QuietPanelBrush}"
+                                CornerRadius="10">
+                            <StackPanel>
+                                <TextBlock FontWeight="SemiBold"
+                                           Text="{Binding SummaryMessage}"
+                                           TextWrapping="Wrap" />
+                                <StackPanel Margin="0,12,0,0"
+                                            Orientation="Horizontal">
+                                    <Button Style="{StaticResource PrimaryButtonStyle}"
+                                            Command="{Binding OpenOutputCommand}"
+                                            Content="{DynamicResource OpenOutputButton}"
+                                            AutomationProperties.Name="{DynamicResource OpenOutputButton}" />
+                                    <Button Margin="8,0,0,0"
+                                            Command="{Binding OpenLogCommand}"
+                                            Content="{DynamicResource OpenLogButton}"
+                                            AutomationProperties.Name="{DynamicResource OpenLogButton}" />
+                                    <Button Margin="8,0,0,0"
+                                            Command="{Binding ResetCommand}"
+                                            Content="{DynamicResource ResetButton}"
+                                            AutomationProperties.Name="{DynamicResource ResetButton}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </ScrollViewer>
     </Grid>
 </Window>

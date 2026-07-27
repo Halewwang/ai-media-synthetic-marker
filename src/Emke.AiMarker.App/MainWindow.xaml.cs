@@ -1,23 +1,41 @@
-﻿using System.Text;
+using Emke.AiMarker.App.ViewModels;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 namespace Emke.AiMarker.App;
 
-/// <summary>
-/// Interaction logic for MainWindow.xaml
-/// </summary>
 public partial class MainWindow : Window
 {
     public MainWindow()
     {
         InitializeComponent();
     }
+
+    private void DropTarget_OnDragOver(object sender, DragEventArgs e)
+    {
+        e.Effects = CanAcceptDrop(e.Data)
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void DropTarget_OnDrop(object sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!CanAcceptDrop(e.Data)
+            || e.Data.GetData(DataFormats.FileDrop) is not string[] paths
+            || DataContext is not MainWindowViewModel viewModel)
+        {
+            return;
+        }
+
+        await viewModel.AddPathsAsync(paths);
+    }
+
+    private bool CanAcceptDrop(IDataObject data) =>
+        DataContext is MainWindowViewModel
+        {
+            State: WorkspaceState.Empty or WorkspaceState.Ready,
+        }
+        && data.GetDataPresent(DataFormats.FileDrop);
 }

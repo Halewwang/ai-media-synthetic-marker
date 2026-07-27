@@ -18,6 +18,7 @@ internal sealed class MainWindowHarness
         Shell = new RecordingShellService();
         Selection = new FakeFileSelectionService();
         Storage = new FakeStorageProbe(availableBytes);
+        Text = new FakeAppText();
         ViewModel = new MainWindowViewModel(
             new InputScanner(paths),
             new StoragePreflight(Storage),
@@ -25,6 +26,7 @@ internal sealed class MainWindowHarness
             Selection,
             Prompts,
             Shell,
+            Text,
             @"D:\运行记录");
     }
 
@@ -39,6 +41,8 @@ internal sealed class MainWindowHarness
     public FakeFileSelectionService Selection { get; }
 
     public FakeStorageProbe Storage { get; }
+
+    public FakeAppText Text { get; }
 
     public FakePathAccess Paths { get; }
 
@@ -55,6 +59,35 @@ internal sealed class MainWindowHarness
         harness.ViewModel.AddPathsAsync([@"D:\商品"]).GetAwaiter().GetResult();
         return harness;
     }
+}
+
+internal sealed class FakeAppText : IAppText
+{
+    private static readonly IReadOnlyDictionary<string, string> Values =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["InitialSelectionPrompt"] = "请选择需要处理的媒体文件或文件夹。",
+            ["MultipleOutputLocationsFormat"] = "多个输出位置（{0}）",
+            ["NoSupportedMedia"] = "未发现支持的媒体文件。",
+            ["NoProcessableMediaWithIssuesFormat"] = "未发现可处理媒体；{0} 个路径存在问题。",
+            ["ReadySummaryFormat"] = "已选择 {0} 个可处理媒体，共 {1}；{2} 个项目已跳过或存在问题。",
+            ["StorageCheckFailed"] = "输出目录检查失败。",
+            ["SafeCopyStorageFailedFormat"] = "无法开始安全副本处理：{0}",
+            ["RunningProgressFormat"] = "正在处理 {0}/{1}。",
+            ["SafeStopRequested"] = "已请求安全停止；当前文件完成后将不再开始新文件。",
+            ["OperationFailedFormat"] = "操作失败：{0}",
+            ["CompletionSummaryFormat"] = "处理完成：{0} 个结果，{1} 个失败。",
+            ["CompletionStoppedSuffix"] = " 已按用户请求安全停止。",
+            ["CompletionLogFailedSuffix"] = " CSV 运行记录写入失败。",
+        };
+
+    public string Get(string key) =>
+        Values.TryGetValue(key, out string? value)
+            ? value
+            : throw new KeyNotFoundException(key);
+
+    public string Format(string key, params object[] arguments) =>
+        string.Format(System.Globalization.CultureInfo.GetCultureInfo("zh-CN"), Get(key), arguments);
 }
 
 internal sealed class FakePathAccess : IPathAccess
