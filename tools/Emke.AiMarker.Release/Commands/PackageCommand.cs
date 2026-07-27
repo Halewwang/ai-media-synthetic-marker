@@ -138,6 +138,7 @@ public sealed class PackageCommand
     {
         string root = Path.GetFullPath(repositoryRoot);
         ReleaseStageValidator.EnsureOrdinaryDirectory(root, "仓库根目录");
+        EnsureNoReparseComponents(root, root, "仓库根目录");
         string publish = RequirePublishDirectory(
             root,
             publishDirectory);
@@ -152,6 +153,7 @@ public sealed class PackageCommand
             "packaging",
             "exiftool.lock.json");
         string runtime = Path.Combine(root, "runtime", "exiftool");
+        EnsureNoReparseComponents(root, runtime, "ExifTool runtime");
         await FetchExifToolCommand.ValidateInstallationAsync(
             runtime,
             lockPath,
@@ -160,8 +162,8 @@ public sealed class PackageCommand
 
         string outputZip = Path.Combine(output, ZipName);
         string checksum = Path.Combine(output, ChecksumName);
-        DeleteExactOutput(outputZip, output);
-        DeleteExactOutput(checksum, output);
+        DeleteExactOutput(root, outputZip, output);
+        DeleteExactOutput(root, checksum, output);
 
         string build = Path.Combine(root, "build");
         EnsureOwnedBuildDirectory(root, build);
@@ -169,6 +171,7 @@ public sealed class PackageCommand
             build,
             $".package-{Guid.NewGuid():N}");
         Directory.CreateDirectory(operationRoot);
+        EnsureNoReparseComponents(root, operationRoot, "package 工作目录");
         string candidateStage = Path.Combine(operationRoot, RootName);
         string reportPath = Path.Combine(operationRoot, "self-test.txt");
         string finalStageParent = Path.Combine(build, "stage");
@@ -198,8 +201,15 @@ public sealed class PackageCommand
             }
 
             ValidateSelfTestReport(reportPath);
+            ReleaseStageValidator.Validate(candidateStage, manifestPath);
             Directory.CreateDirectory(finalStageParent);
-            ReplaceOwnedStage(candidateStage, finalStage, finalStageParent);
+            EnsureNoReparseComponents(root, finalStageParent, "stage 父目录");
+            ReplaceOwnedStage(
+                root,
+                candidateStage,
+                finalStage,
+                finalStageParent);
+            ReleaseStageValidator.Validate(finalStage, manifestPath);
 
             string candidateZip = Path.Combine(
                 output,
@@ -241,24 +251,31 @@ public sealed class PackageCommand
         string runtime,
         string stage)
     {
+        EnsureNoReparseComponents(root, publish, "publish 输出目录");
+        EnsureNoReparseComponents(root, runtime, "ExifTool runtime");
         CopyDirectoryWithoutLinks(publish, stage);
         CopyRequiredFile(
+            root,
             Path.Combine(root, "release_template", "使用说明.txt"),
             Path.Combine(stage, "使用说明.txt"),
             overwrite: true);
         CopyRequiredFile(
+            root,
             Path.Combine(root, "LICENSE"),
             Path.Combine(stage, "LICENSE.txt"),
             overwrite: true);
         CopyRequiredFile(
+            root,
             Path.Combine(root, "THIRD_PARTY_NOTICES.md"),
             Path.Combine(stage, "THIRD_PARTY_NOTICES.txt"),
             overwrite: true);
         CopyRequiredFile(
+            root,
             Path.Combine(root, "packaging", "licenses", "dotnet", "LICENSE.txt"),
             Path.Combine(stage, "licenses", "dotnet", "LICENSE.txt"),
             overwrite: false);
         CopyRequiredFile(
+            root,
             Path.Combine(
                 root,
                 "packaging",
@@ -316,10 +333,12 @@ public sealed class PackageCommand
     }
 
     private static void ReplaceOwnedStage(
+        string root,
         string candidate,
         string finalStage,
         string stageParent)
     {
+        EnsureNoReparseComponents(root, stageParent, "stage 父目录");
         ReleaseStageValidator.EnsureOrdinaryDirectory(stageParent, "stage 父目录");
         string? backup = null;
         if (Directory.Exists(finalStage))
@@ -404,10 +423,12 @@ public sealed class PackageCommand
     }
 
     private static void CopyRequiredFile(
+        string root,
         string source,
         string destination,
         bool overwrite)
     {
+        EnsureNoReparseComponents(root, source, "发布输入文件");
         ReleaseStageValidator.EnsureOrdinaryFile(source, "发布输入文件");
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
         File.Copy(source, destination, overwrite);
@@ -420,6 +441,7 @@ public sealed class PackageCommand
     {
         string path = Path.GetFullPath(candidate);
         EnsureDescendant(root, path, description);
+        EnsureNoReparseComponents(root, path, description);
         ReleaseStageValidator.EnsureOrdinaryDirectory(path, description);
         return path;
     }
@@ -453,12 +475,14 @@ public sealed class PackageCommand
     {
         string output = Path.GetFullPath(outputDirectory);
         EnsureDescendant(root, output, "output 目录");
+        EnsureNoReparseComponents(root, output, "output 目录");
         if (File.Exists(output))
         {
             throw new ReleaseToolException($"output 路径是文件：{output}");
         }
 
         Directory.CreateDirectory(output);
+        EnsureNoReparseComponents(root, output, "output 目录");
         ReleaseStageValidator.EnsureOrdinaryDirectory(output, "output 目录");
         return output;
     }
@@ -466,12 +490,14 @@ public sealed class PackageCommand
     private static void EnsureOwnedBuildDirectory(string root, string build)
     {
         EnsureDescendant(root, build, "build 目录");
+        EnsureNoReparseComponents(root, build, "build 目录");
         if (File.Exists(build))
         {
             throw new ReleaseToolException($"build 路径是文件：{build}");
         }
 
         Directory.CreateDirectory(build);
+        EnsureNoReparseComponents(root, build, "build 目录");
         ReleaseStageValidator.EnsureOrdinaryDirectory(build, "build 目录");
     }
 
@@ -492,9 +518,14 @@ public sealed class PackageCommand
         }
     }
 
-    private static void DeleteExactOutput(string path, string outputDirectory)
+    private static void DeleteExactOutput(
+        string root,
+        string path,
+        string outputDirectory)
     {
         EnsureExactChild(path, outputDirectory, Path.GetFileName(path));
+        EnsureNoReparseComponents(root, outputDirectory, "output 目录");
+        EnsureNoReparseComponents(root, path, "发布输出文件");
         if (Directory.Exists(path))
         {
             throw new ReleaseToolException(
@@ -502,6 +533,64 @@ public sealed class PackageCommand
         }
 
         File.Delete(path);
+    }
+
+    private static void EnsureNoReparseComponents(
+        string root,
+        string candidate,
+        string description)
+    {
+        string fullRoot = Path.GetFullPath(root);
+        string fullCandidate = Path.GetFullPath(candidate);
+        string relative = Path.GetRelativePath(fullRoot, fullCandidate);
+        if (relative == ".."
+            || relative.StartsWith(
+                $"..{Path.DirectorySeparatorChar}",
+                StringComparison.Ordinal)
+            || Path.IsPathFullyQualified(relative))
+        {
+            throw new ReleaseToolException(
+                $"{description}必须位于已验证仓库根目录内：{fullCandidate}");
+        }
+
+        FileAttributes rootAttributes = File.GetAttributes(fullRoot);
+        if (!rootAttributes.HasFlag(FileAttributes.Directory)
+            || rootAttributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            throw new ReleaseToolException(
+                $"仓库根目录必须是非链接普通目录：{fullRoot}");
+        }
+
+        if (relative == ".")
+        {
+            return;
+        }
+
+        string current = fullRoot;
+        string[] segments = relative.Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries);
+        foreach (string segment in segments)
+        {
+            current = Path.Combine(current, segment);
+            FileAttributes attributes;
+            try
+            {
+                attributes = File.GetAttributes(current);
+            }
+            catch (Exception exception) when (
+                exception is FileNotFoundException
+                    or DirectoryNotFoundException)
+            {
+                break;
+            }
+
+            if (attributes.HasFlag(FileAttributes.ReparsePoint))
+            {
+                throw new ReleaseToolException(
+                    $"{description}的仓库内路径组件不能是链接或重解析点：{current}");
+            }
+        }
     }
 
     private static void EnsureExactChild(

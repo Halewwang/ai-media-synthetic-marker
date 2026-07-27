@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -25,12 +26,14 @@ public interface IVersionProbe
 
 public sealed class HttpArchiveDownloader : IArchiveDownloader, IDisposable
 {
+    private const int MaximumRedirects = 5;
     private readonly HttpClient client;
     private readonly bool ownsClient;
 
     public HttpArchiveDownloader(HttpClient? client = null)
     {
-        this.client = client ?? new HttpClient
+        this.client = client ?? new HttpClient(
+            new HttpClientHandler { AllowAutoRedirect = false })
         {
             Timeout = TimeSpan.FromMinutes(2),
         };
@@ -42,24 +45,101 @@ public sealed class HttpArchiveDownloader : IArchiveDownloader, IDisposable
         string destination,
         CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
-        request.Headers.UserAgent.ParseAdd("emke-ai-marker-release/2.0");
-        using HttpResponseMessage response = await client.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-        response.EnsureSuccessStatusCode();
-        await using Stream source =
-            await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using var output = new FileStream(
-            destination,
-            FileMode.CreateNew,
-            FileAccess.Write,
-            FileShare.None,
-            bufferSize: 1024 * 1024,
-            FileOptions.Asynchronous | FileOptions.SequentialScan);
-        await source.CopyToAsync(output, 1024 * 1024, cancellationToken);
-        await output.FlushAsync(cancellationToken);
+        ArgumentNullException.ThrowIfNull(uri);
+        ValidateDownloadUri(uri, uri.Host);
+        Uri current = uri;
+        var visited = new HashSet<string>(StringComparer.Ordinal)
+        {
+            current.AbsoluteUri,
+        };
+
+        for (int redirects = 0; ; redirects++)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, current);
+            request.Headers.UserAgent.ParseAdd("emke-ai-marker-release/2.0");
+            using HttpResponseMessage response = await client.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            if (IsRedirect(response.StatusCode))
+            {
+                if (redirects >= MaximumRedirects)
+                {
+                    throw new ReleaseToolException(
+                        $"ExifTool 下载重定向超过 {MaximumRedirects} 次。");
+                }
+
+                Uri? location = response.Headers.Location;
+                if (location is null)
+                {
+                    throw new ReleaseToolException(
+                        "ExifTool 下载重定向缺少 Location。");
+                }
+
+                Uri next = location.IsAbsoluteUri
+                    ? location
+                    : new Uri(current, location);
+                ValidateDownloadUri(next, uri.Host);
+                if (!visited.Add(next.AbsoluteUri))
+                {
+                    throw new ReleaseToolException(
+                        "ExifTool 下载发生重定向循环。");
+                }
+
+                current = next;
+                continue;
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new ReleaseToolException(
+                    $"ExifTool 下载失败，HTTP 状态码 {(int)response.StatusCode}。");
+            }
+
+            await using Stream source =
+                await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var output = new FileStream(
+                destination,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 1024 * 1024,
+                FileOptions.Asynchronous | FileOptions.SequentialScan);
+            await source.CopyToAsync(output, 1024 * 1024, cancellationToken);
+            await output.FlushAsync(cancellationToken);
+            return;
+        }
+    }
+
+    private static bool IsRedirect(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.MovedPermanently
+            or HttpStatusCode.Found
+            or HttpStatusCode.SeeOther
+            or HttpStatusCode.TemporaryRedirect
+            or HttpStatusCode.PermanentRedirect;
+
+    private static void ValidateDownloadUri(Uri uri, string originalHost)
+    {
+        bool sameHost = string.Equals(
+            uri.Host,
+            originalHost,
+            StringComparison.OrdinalIgnoreCase);
+        bool sourceForgeMirror = uri.Host.EndsWith(
+            ".sourceforge.net",
+            StringComparison.OrdinalIgnoreCase);
+        if (!uri.IsAbsoluteUri
+            || !string.Equals(
+                uri.Scheme,
+                Uri.UriSchemeHttps,
+                StringComparison.Ordinal)
+            || !string.IsNullOrEmpty(uri.UserInfo)
+            || !string.IsNullOrEmpty(uri.Fragment)
+            || !uri.IsDefaultPort
+            || (!sameHost && !sourceForgeMirror))
+        {
+            throw new ReleaseToolException(
+                $"ExifTool 下载 URL 或重定向目标不受信任：{uri}");
+        }
     }
 
     public void Dispose()
@@ -331,6 +411,15 @@ public sealed partial class FetchExifToolCommand
         {
             throw new ReleaseToolException("ExifTool 锁定文件根节点必须是对象。");
         }
+        RequireExactProperties(
+            root,
+            "ExifTool 锁定文件",
+            "version",
+            "platform",
+            "archive_name",
+            "url",
+            "size",
+            "sha256");
 
         string version = RequireString(root, "version");
         string platform = RequireString(root, "platform");
@@ -437,7 +526,7 @@ public sealed partial class FetchExifToolCommand
         foreach (ZipArchiveEntry entry in archive.Entries)
         {
             string path = ValidateArchiveEntryName(entry.FullName);
-            string normalized = path.Normalize(NormalizationForm.FormC);
+            string normalized = PortablePathValidator.CollisionKey(path);
             if (!explicitNames.Add(normalized))
             {
                 throw new ReleaseToolException(
@@ -482,26 +571,12 @@ public sealed partial class FetchExifToolCommand
 
     private static string ValidateArchiveEntryName(string name)
     {
-        if (string.IsNullOrEmpty(name)
-            || name.StartsWith("/", StringComparison.Ordinal)
-            || name.StartsWith('\\')
-            || name.Contains('\\', StringComparison.Ordinal)
-            || DrivePrefixPattern().IsMatch(name))
-        {
-            throw new ReleaseToolException($"ZIP 包含不安全路径：{name}");
-        }
-
         string withoutTrailingSlash = name.EndsWith("/", StringComparison.Ordinal)
             ? name[..^1]
             : name;
-        string[] segments = withoutTrailingSlash.Split('/');
-        if (segments.Length == 0
-            || segments.Any(segment =>
-                segment.Length == 0 || segment is "." or ".."))
-        {
-            throw new ReleaseToolException($"ZIP 包含不安全路径：{name}");
-        }
-
+        PortablePathValidator.ValidateRelativePath(
+            withoutTrailingSlash,
+            "ZIP");
         return withoutTrailingSlash;
     }
 
@@ -710,6 +785,15 @@ public sealed partial class FetchExifToolCommand
         using JsonDocument document = JsonDocument.Parse(
             File.ReadAllBytes(manifestPath));
         JsonElement root = document.RootElement;
+        RequireExactProperties(
+            root,
+            "ExifTool runtime manifest",
+            "schema_version",
+            "exiftool_version",
+            "archive_name",
+            "archive_size",
+            "archive_sha256",
+            "files");
         if (RequireInt64(root, "schema_version") != 1
             || !string.Equals(
                 RequireString(root, "exiftool_version"),
@@ -740,9 +824,15 @@ public sealed partial class FetchExifToolCommand
         var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (JsonElement item in files.EnumerateArray())
         {
+            RequireExactProperties(
+                item,
+                "ExifTool runtime manifest payload 记录",
+                "path",
+                "size",
+                "sha256");
             string path = RequireString(item, "path");
             ValidateManifestPath(path);
-            string normalizedPath = path.Normalize(NormalizationForm.FormC);
+            string normalizedPath = PortablePathValidator.CollisionKey(path);
             if (!paths.Add(normalizedPath))
             {
                 throw new ReleaseToolException(
@@ -941,14 +1031,10 @@ public sealed partial class FetchExifToolCommand
 
     private static void ValidateManifestPath(string path)
     {
-        if (string.IsNullOrWhiteSpace(path)
-            || path.StartsWith("/", StringComparison.Ordinal)
-            || path.StartsWith('\\')
-            || path.Contains('\\', StringComparison.Ordinal)
-            || DrivePrefixPattern().IsMatch(path)
-            || path.Split('/').Any(segment =>
-                segment.Length == 0 || segment is "." or "..")
-            || string.Equals(path, ManifestName, StringComparison.OrdinalIgnoreCase)
+        PortablePathValidator.ValidateRelativePath(
+            path,
+            "ExifTool runtime manifest");
+        if (string.Equals(path, ManifestName, StringComparison.OrdinalIgnoreCase)
             || string.Equals(path, "README.md", StringComparison.OrdinalIgnoreCase))
         {
             throw new ReleaseToolException(
@@ -991,6 +1077,30 @@ public sealed partial class FetchExifToolCommand
         return result;
     }
 
+    private static void RequireExactProperties(
+        JsonElement element,
+        string description,
+        params string[] expectedProperties)
+    {
+        if (element.ValueKind != JsonValueKind.Object)
+        {
+            throw new ReleaseToolException($"{description} 必须是对象。");
+        }
+
+        string[] actual = element.EnumerateObject()
+            .Select(property => property.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        string[] expected = expectedProperties
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        if (!actual.SequenceEqual(expected, StringComparer.Ordinal))
+        {
+            throw new ReleaseToolException(
+                $"{description} 包含未知、缺失或重复字段。");
+        }
+    }
+
     private static StringComparison PathComparison =>
         OperatingSystem.IsWindows()
             ? StringComparison.OrdinalIgnoreCase
@@ -998,9 +1108,6 @@ public sealed partial class FetchExifToolCommand
 
     [GeneratedRegex("^[0-9a-fA-F]{64}$", RegexOptions.CultureInvariant)]
     private static partial Regex Sha256Pattern();
-
-    [GeneratedRegex("^[A-Za-z]:", RegexOptions.CultureInvariant)]
-    private static partial Regex DrivePrefixPattern();
 
     private sealed record ExifToolLock(
         string Version,

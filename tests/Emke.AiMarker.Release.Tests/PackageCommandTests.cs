@@ -6,6 +6,14 @@ namespace Emke.AiMarker.Release.Tests;
 
 public sealed class PackageCommandTests
 {
+    public static TheoryData<string, string> SelfTestStagePollution => new()
+    {
+        { "private.jpg", "media" },
+        { "records/验证.csv", "csv" },
+        { "使用说明.txt", @"C:\Users\private\source" },
+        { "示例输出/EMKE 已标记/unexpected.bin", "pollution" },
+    };
+
     [Fact]
     public async Task Builds_stage_runs_exact_self_test_then_writes_zip_and_checksum()
     {
@@ -130,6 +138,127 @@ public sealed class PackageCommandTests
                 System.IO.Path.Combine(root, "dist"),
                 1_700_000_000,
                 CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task Rejects_publish_path_with_intermediate_symlink_to_outside()
+    {
+        using var temp = new TemporaryDirectory();
+        (string root, FetchFixture fetch) = await PrepareRepositoryAsync(temp);
+        string external = temp.CreateDirectory("external-publish/child");
+        CopyDirectory(ReleaseFixtures.PublishDirectory(root), external);
+        string link = System.IO.Path.Combine(root, "build", "publish", "link");
+        Directory.CreateSymbolicLink(
+            link,
+            System.IO.Path.GetDirectoryName(external)!);
+        var process = new RecordingPackageProcess();
+        var command = new PackageCommand(
+            process,
+            new FixedVersionProbe("13.59"));
+
+        await Assert.ThrowsAsync<ReleaseToolException>(
+            () => command.ExecuteAsync(
+                root,
+                System.IO.Path.Combine(link, "child"),
+                System.IO.Path.Combine(root, "dist"),
+                1_700_000_000,
+                CancellationToken.None));
+
+        Assert.Null(process.Executable);
+        Assert.True(File.Exists(
+            System.IO.Path.Combine(external, "EMKE AI Marker.exe")));
+    }
+
+    [Fact]
+    public async Task Rejects_output_path_with_intermediate_symlink_without_deleting_outside()
+    {
+        using var temp = new TemporaryDirectory();
+        (string root, FetchFixture fetch) = await PrepareRepositoryAsync(temp);
+        string external = temp.CreateDirectory("external-output/dist");
+        string zip = System.IO.Path.Combine(
+            external,
+            "emke-ai-marker-v2.0.0-windows-x64.zip");
+        string checksum = System.IO.Path.Combine(external, "SHA256SUMS.txt");
+        File.WriteAllText(zip, "outside zip");
+        File.WriteAllText(checksum, "outside checksum");
+        string link = System.IO.Path.Combine(root, "output-link");
+        Directory.CreateSymbolicLink(
+            link,
+            System.IO.Path.GetDirectoryName(external)!);
+        var process = new RecordingPackageProcess();
+        var command = new PackageCommand(
+            process,
+            new FixedVersionProbe("13.59"));
+
+        await Assert.ThrowsAsync<ReleaseToolException>(
+            () => command.ExecuteAsync(
+                root,
+                ReleaseFixtures.PublishDirectory(root),
+                System.IO.Path.Combine(link, "dist"),
+                1_700_000_000,
+                CancellationToken.None));
+
+        Assert.Null(process.Executable);
+        Assert.Equal("outside zip", File.ReadAllText(zip));
+        Assert.Equal("outside checksum", File.ReadAllText(checksum));
+    }
+
+    [Theory]
+    [MemberData(nameof(SelfTestStagePollution))]
+    public async Task Rejects_stage_pollution_created_by_successful_self_test(
+        string relativePath,
+        string content)
+    {
+        using var temp = new TemporaryDirectory();
+        (string root, FetchFixture fetch) = await PrepareRepositoryAsync(temp);
+        string dist = System.IO.Path.Combine(root, "dist");
+        var process = new RecordingPackageProcess
+        {
+            MutateWorkingDirectory = stage =>
+                ReleaseFixtures.Write(stage, relativePath, content),
+        };
+        var command = new PackageCommand(
+            process,
+            new FixedVersionProbe("13.59"));
+
+        await Assert.ThrowsAsync<ReleaseToolException>(
+            () => command.ExecuteAsync(
+                root,
+                ReleaseFixtures.PublishDirectory(root),
+                dist,
+                1_700_000_000,
+                CancellationToken.None));
+
+        Assert.False(File.Exists(
+            System.IO.Path.Combine(
+                dist,
+                "emke-ai-marker-v2.0.0-windows-x64.zip")));
+        Assert.False(File.Exists(
+            System.IO.Path.Combine(dist, "SHA256SUMS.txt")));
+    }
+
+    private static async Task<(string Root, FetchFixture Fetch)>
+        PrepareRepositoryAsync(TemporaryDirectory temp)
+    {
+        FetchFixture fetch = ReleaseFixtures.CreateFetchFixture(temp);
+        var acquisition = new FetchExifToolCommand(
+            new CopyingDownloader(fetch.ArchivePath),
+            new FixedVersionProbe("13.59"));
+        await acquisition.ExecuteAsync(
+            fetch.LockPath,
+            fetch.TargetPath,
+            fetch.ArchivePath,
+            false,
+            CancellationToken.None);
+        string root = ReleaseFixtures.CreatePackageRepository(temp, fetch);
+        CopyDirectory(
+            fetch.TargetPath,
+            System.IO.Path.Combine(root, "runtime", "exiftool"));
+        string manifest = ReleaseFixtures.CreateManifest(temp);
+        File.Copy(
+            manifest,
+            System.IO.Path.Combine(root, "packaging", "release-manifest.json"));
+        return (root, fetch);
     }
 
     private static void CopyDirectory(string source, string destination)

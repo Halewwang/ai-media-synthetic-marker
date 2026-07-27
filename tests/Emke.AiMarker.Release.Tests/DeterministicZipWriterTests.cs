@@ -94,4 +94,25 @@ public sealed class DeterministicZipWriterTests(ITestOutputHelper output)
                 1_700_000_000));
         Assert.False(File.Exists(output));
     }
+
+    [Theory]
+    [InlineData("file.txt:private")]
+    [InlineData("CON.txt")]
+    [InlineData("trailing.")]
+    [InlineData("trailing ")]
+    public void Rejects_nonportable_windows_input_paths(string relativePath)
+    {
+        using var temp = new TemporaryDirectory();
+        string stage = ReleaseFixtures.CreateValidStage(temp);
+        ReleaseFixtures.Write(stage, relativePath);
+        string output = System.IO.Path.Combine(temp.Path, "bad.zip");
+
+        Assert.Throws<ReleaseToolException>(
+            () => DeterministicZipWriter.Write(
+                stage,
+                output,
+                "emke-ai-marker-v2.0.0-windows-x64",
+                1_700_000_000));
+        Assert.False(File.Exists(output));
+    }
 }

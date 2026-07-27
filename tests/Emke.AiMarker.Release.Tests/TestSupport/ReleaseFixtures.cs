@@ -182,6 +182,8 @@ internal sealed class RecordingPackageProcess : IPackageProcessRunner
 
     public IReadOnlyList<string>? Arguments { get; private set; }
 
+    public Action<string>? MutateWorkingDirectory { get; set; }
+
     public Task<int> RunAsync(
         string executable,
         IReadOnlyList<string> arguments,
@@ -203,6 +205,7 @@ internal sealed class RecordingPackageProcess : IPackageProcessRunner
                 """);
         }
 
+        MutateWorkingDirectory?.Invoke(workingDirectory);
         return Task.FromResult(ExitCode);
     }
 }

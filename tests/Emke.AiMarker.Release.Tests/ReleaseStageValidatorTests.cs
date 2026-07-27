@@ -1,5 +1,6 @@
 using Emke.AiMarker.Release.Packaging;
 using Emke.AiMarker.Release.Tests.TestSupport;
+using System.Text;
 
 namespace Emke.AiMarker.Release.Tests;
 
@@ -51,6 +52,54 @@ public sealed class ReleaseStageValidatorTests
             () => ReleaseStageValidator.Validate(stage, manifest));
     }
 
+    [Theory]
+    [InlineData("utf16le-no-bom")]
+    [InlineData("utf16be-no-bom")]
+    [InlineData("utf16le-bom")]
+    [InlineData("utf16be-bom")]
+    [InlineData("utf32le-bom")]
+    [InlineData("utf32be-bom")]
+    public void Rejects_absolute_paths_in_supported_or_suspicious_unicode_text(
+        string encodingName)
+    {
+        using var temp = new TemporaryDirectory();
+        string manifest = ReleaseFixtures.CreateManifest(temp);
+        string stage = ReleaseFixtures.CreateValidStage(temp);
+        string path = System.IO.Path.Combine(stage, "使用说明.txt");
+        const string content = @"local=C:\Users\private\source";
+
+        Encoding encoding = encodingName switch
+        {
+            "utf16le-no-bom" or "utf16le-bom" =>
+                new UnicodeEncoding(false, encodingName is "utf16le-bom", true),
+            "utf16be-no-bom" or "utf16be-bom" =>
+                new UnicodeEncoding(true, encodingName is "utf16be-bom", true),
+            "utf32le-bom" => new UTF32Encoding(false, true, true),
+            "utf32be-bom" => new UTF32Encoding(true, true, true),
+            _ => throw new InvalidOperationException(),
+        };
+        byte[] bytes = encoding.GetPreamble().Concat(
+            encoding.GetBytes(content)).ToArray();
+        File.WriteAllBytes(path, bytes);
+
+        Assert.Throws<ReleaseToolException>(
+            () => ReleaseStageValidator.Validate(stage, manifest));
+    }
+
+    [Fact]
+    public void Rejects_oversized_text_instead_of_skipping_absolute_path_scan()
+    {
+        using var temp = new TemporaryDirectory();
+        string manifest = ReleaseFixtures.CreateManifest(temp);
+        string stage = ReleaseFixtures.CreateValidStage(temp);
+        string path = System.IO.Path.Combine(stage, "使用说明.txt");
+        string content = new('a', (2 * 1024 * 1024) + 1);
+        File.WriteAllText(path, content + @" C:\Users\private\source");
+
+        Assert.Throws<ReleaseToolException>(
+            () => ReleaseStageValidator.Validate(stage, manifest));
+    }
+
     [Fact]
     public void Requires_every_manifest_path_and_accepts_clean_stage()
     {
@@ -74,6 +123,19 @@ public sealed class ReleaseStageValidatorTests
         Assert.Throws<ReleaseToolException>(
             () => ReleaseStageValidator.ValidatePortablePathSet(
                 ["data/café.bin", "data/cafe\u0301.bin"]));
+    }
+
+    [Theory]
+    [InlineData("file.txt:private")]
+    [InlineData("CON.txt")]
+    [InlineData("data/aux.json")]
+    [InlineData("trailing.")]
+    [InlineData("trailing ")]
+    [InlineData("control\u0001.txt")]
+    public void Rejects_nonportable_windows_path_segments(string relativePath)
+    {
+        Assert.Throws<ReleaseToolException>(
+            () => ReleaseStageValidator.ValidatePortablePathSet([relativePath]));
     }
 
     [Fact]

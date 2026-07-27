@@ -19,6 +19,17 @@ public sealed class ReleaseToolException : Exception
 
 public static partial class ReleaseStageValidator
 {
+    private const int MaximumTextBytes = 2 * 1024 * 1024;
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly UnicodeEncoding StrictUtf16LittleEndian =
+        new(false, false, true);
+    private static readonly UnicodeEncoding StrictUtf16BigEndian =
+        new(true, false, true);
+    private static readonly UTF32Encoding StrictUtf32LittleEndian =
+        new(false, false, true);
+    private static readonly UTF32Encoding StrictUtf32BigEndian =
+        new(true, false, true);
+
     private static readonly string[] ExactRequiredPaths =
     [
         "EMKE AI Marker.exe",
@@ -127,18 +138,7 @@ public static partial class ReleaseStageValidator
 
     public static void ValidatePortablePathSet(IEnumerable<string> relativePaths)
     {
-        ArgumentNullException.ThrowIfNull(relativePaths);
-        var normalized = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (string relativePath in relativePaths)
-        {
-            ValidatePortableRelativePath(relativePath, "path set");
-            string key = relativePath.Normalize(NormalizationForm.FormC);
-            if (!normalized.Add(key))
-            {
-                throw new ReleaseToolException(
-                    $"路径集合包含大小写或 Unicode 规范化冲突：{relativePath}");
-            }
-        }
+        PortablePathValidator.ValidatePathSet(relativePaths, "路径集合");
     }
 
     internal static void EnsureOrdinaryDirectory(string path, string description)
@@ -257,7 +257,9 @@ public static partial class ReleaseStageValidator
     {
         bool directory = requiredPath.EndsWith("/", StringComparison.Ordinal);
         string pathWithoutSlash = directory ? requiredPath[..^1] : requiredPath;
-        ValidatePortableRelativePath(pathWithoutSlash, "required path");
+        PortablePathValidator.ValidateRelativePath(
+            pathWithoutSlash,
+            "required path");
         string fullPath = Path.Combine(
             root,
             pathWithoutSlash.Replace('/', Path.DirectorySeparatorChar));
@@ -293,9 +295,10 @@ public static partial class ReleaseStageValidator
             FileAttributes attributes = File.GetAttributes(entry);
             string relativePath = NormalizeRelativePath(
                 Path.GetRelativePath(root, entry));
-            ValidatePortableRelativePath(relativePath, "stage path");
+            PortablePathValidator.ValidateRelativePath(relativePath, "stage path");
 
-            if (!normalizedPaths.Add(relativePath))
+            if (!normalizedPaths.Add(
+                    PortablePathValidator.CollisionKey(relativePath)))
             {
                 throw new ReleaseToolException(
                     $"发布暂存目录包含大小写或 Unicode 规范化冲突路径：{relativePath}");
@@ -361,12 +364,14 @@ public static partial class ReleaseStageValidator
         }
 
         var info = new FileInfo(fullPath);
-        if (info.Length > 2 * 1024 * 1024)
+        if (info.Length > MaximumTextBytes)
         {
-            return;
+            throw new ReleaseToolException(
+                $"发布文本超过 {MaximumTextBytes} 字节扫描上限：{relativePath}");
         }
 
-        string text = File.ReadAllText(fullPath, Encoding.UTF8);
+        byte[] bytes = File.ReadAllBytes(fullPath);
+        string text = DecodeText(bytes, relativePath);
         if (WindowsDrivePath().IsMatch(text)
             || UncPath().IsMatch(text)
             || UnixUserPath().IsMatch(text))
@@ -376,23 +381,57 @@ public static partial class ReleaseStageValidator
         }
     }
 
-    private static void ValidatePortableRelativePath(
-        string path,
-        string description)
+    private static string DecodeText(byte[] bytes, string relativePath)
     {
-        if (string.IsNullOrWhiteSpace(path)
-            || path.StartsWith("/", StringComparison.Ordinal)
-            || path.StartsWith('\\')
-            || path.Contains('\\', StringComparison.Ordinal)
-            || DrivePrefix().IsMatch(path))
+        ReadOnlySpan<byte> data = bytes;
+        Encoding encoding;
+        int preambleLength;
+        if (data.StartsWith(new byte[] { 0x00, 0x00, 0xfe, 0xff }))
         {
-            throw new ReleaseToolException($"{description} 包含不安全路径：{path}");
+            encoding = StrictUtf32BigEndian;
+            preambleLength = 4;
+        }
+        else if (data.StartsWith(new byte[] { 0xff, 0xfe, 0x00, 0x00 }))
+        {
+            encoding = StrictUtf32LittleEndian;
+            preambleLength = 4;
+        }
+        else if (data.StartsWith(new byte[] { 0xfe, 0xff }))
+        {
+            encoding = StrictUtf16BigEndian;
+            preambleLength = 2;
+        }
+        else if (data.StartsWith(new byte[] { 0xff, 0xfe }))
+        {
+            encoding = StrictUtf16LittleEndian;
+            preambleLength = 2;
+        }
+        else if (data.StartsWith(new byte[] { 0xef, 0xbb, 0xbf }))
+        {
+            encoding = StrictUtf8;
+            preambleLength = 3;
+        }
+        else
+        {
+            if (data.Contains((byte)0))
+            {
+                throw new ReleaseToolException(
+                    $"发布文本包含无 BOM 的可疑 Unicode 编码：{relativePath}");
+            }
+
+            encoding = StrictUtf8;
+            preambleLength = 0;
         }
 
-        string[] segments = path.Split('/');
-        if (segments.Any(segment => segment.Length == 0 || segment is "." or ".."))
+        try
         {
-            throw new ReleaseToolException($"{description} 包含不安全路径：{path}");
+            return encoding.GetString(data[preambleLength..]);
+        }
+        catch (DecoderFallbackException exception)
+        {
+            throw new ReleaseToolException(
+                $"发布文本编码无效：{relativePath}",
+                exception);
         }
     }
 
@@ -427,9 +466,6 @@ public static partial class ReleaseStageValidator
 
     [GeneratedRegex(@"/(?:Users|home)/[^/\s]+(?:/|$)", RegexOptions.CultureInvariant)]
     private static partial Regex UnixUserPath();
-
-    [GeneratedRegex(@"^[A-Za-z]:", RegexOptions.CultureInvariant)]
-    private static partial Regex DrivePrefix();
 
     private sealed record ReleaseManifest(IReadOnlyList<string> RequiredPaths);
 }

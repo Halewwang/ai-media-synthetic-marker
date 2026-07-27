@@ -63,6 +63,7 @@ public static partial class DeterministicZipWriter
             throw new ReleaseToolException(
                 "ZIP 根目录名必须是非空 ASCII 字母、数字、点、下划线或连字符。");
         }
+        PortablePathValidator.ValidateRelativePath(rootName, "ZIP 根目录名");
 
         DateTimeOffset timestamp;
         try
@@ -165,7 +166,8 @@ public static partial class DeterministicZipWriter
         {
             new(root, $"{rootName}/", IsDirectory: true),
         };
-        Walk(root, root, rootName, items);
+        var collisionKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Walk(root, root, rootName, items, collisionKeys);
         return items
             .OrderBy(item => item.ArchivePath, StringComparer.Ordinal)
             .ToArray();
@@ -175,7 +177,8 @@ public static partial class DeterministicZipWriter
         string root,
         string directory,
         string rootName,
-        List<ArchiveItem> items)
+        List<ArchiveItem> items,
+        HashSet<string> collisionKeys)
     {
         foreach (string path in Directory.EnumerateFileSystemEntries(
                      directory,
@@ -190,12 +193,12 @@ public static partial class DeterministicZipWriter
             FileAttributes attributes = File.GetAttributes(path);
             string relative = ReleaseStageValidator.NormalizeRelativePath(
                 Path.GetRelativePath(root, path));
-            if (relative.StartsWith("../", StringComparison.Ordinal)
-                || relative is ".."
-                || relative.Contains('\\', StringComparison.Ordinal))
+            PortablePathValidator.ValidateRelativePath(relative, "ZIP 输入路径");
+            if (!collisionKeys.Add(
+                    PortablePathValidator.CollisionKey(relative)))
             {
                 throw new ReleaseToolException(
-                    $"ZIP 输入路径越界：{relative}");
+                    $"ZIP 输入包含大小写或 Unicode 规范化冲突：{relative}");
             }
 
             if (attributes.HasFlag(FileAttributes.ReparsePoint))
@@ -210,7 +213,7 @@ public static partial class DeterministicZipWriter
             items.Add(new(path, archivePath, directoryEntry));
             if (directoryEntry)
             {
-                Walk(root, path, rootName, items);
+                Walk(root, path, rootName, items, collisionKeys);
             }
         }
     }
