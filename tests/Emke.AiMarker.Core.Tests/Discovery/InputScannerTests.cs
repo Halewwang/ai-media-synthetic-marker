@@ -53,4 +53,28 @@ public sealed class InputScannerTests
         Assert.Single(result.Issues);
         Assert.Contains("重解析点", result.Issues[0].Error);
     }
+
+    [Fact]
+    public void Scan_rejects_drive_root_before_traversal()
+    {
+        var paths = new FakePathAccess().Directory(@"D:\");
+
+        ScanResult result = new InputScanner(paths).Scan([@"D:\"]);
+
+        Assert.Empty(result.Media);
+        ScanIssue issue = Assert.Single(result.Issues);
+        Assert.Contains("根目录", issue.Error);
+    }
+
+    [Fact]
+    public void Scan_rejects_unc_share_root_before_traversal()
+    {
+        var paths = new FakePathAccess().Directory(@"\\server\share\");
+
+        ScanResult result = new InputScanner(paths).Scan([@"\\server\share\"]);
+
+        Assert.Empty(result.Media);
+        ScanIssue issue = Assert.Single(result.Issues);
+        Assert.Contains("根目录", issue.Error);
+    }
 }

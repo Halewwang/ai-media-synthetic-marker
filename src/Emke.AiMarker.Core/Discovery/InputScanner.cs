@@ -27,6 +27,14 @@ public sealed class InputScanner(IPathAccess paths)
                 continue;
             }
 
+            if (IsUnsafeTopLevelRoot(topLevelInput))
+            {
+                issues.Add(new(
+                    topLevelInput,
+                    "不支持将驱动器根目录或 UNC 共享根目录作为顶层输入。请选择其中的文件或子文件夹。"));
+                continue;
+            }
+
             ScanInput(topLevelInput, seenPaths, visitedDirectories, media, issues);
         }
 
@@ -192,6 +200,27 @@ public sealed class InputScanner(IPathAccess paths)
 
     private static bool IsAccessException(Exception exception) =>
         exception is IOException or UnauthorizedAccessException or System.Security.SecurityException;
+
+    private static bool IsUnsafeTopLevelRoot(string path)
+    {
+        string normalized = path.Replace('/', '\\').TrimEnd('\\');
+        if (normalized.Length == 2 &&
+            char.IsAsciiLetter(normalized[0]) &&
+            normalized[1] == ':')
+        {
+            return true;
+        }
+
+        if (!normalized.StartsWith("\\\\", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string[] components = normalized[2..].Split(
+            '\\',
+            StringSplitOptions.RemoveEmptyEntries);
+        return components.Length == 2;
+    }
 
     private static string GetExtension(string path)
     {
