@@ -22,11 +22,12 @@ from pathlib import Path, PurePosixPath
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+REPOSITORY_ROOT = PROJECT_ROOT.parents[1]
 SOURCE_PATH = PROJECT_ROOT / "src" / "ai_media_marker.py"
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
 REQUIREMENTS_BUILD_PATH = PROJECT_ROOT / "requirements-build.lock"
 SPEC_PATH = PROJECT_ROOT / "packaging" / "marker_app.spec"
-EXIFTOOL_LOCK_PATH = PROJECT_ROOT / "packaging" / "exiftool.lock.json"
+EXIFTOOL_LOCK_PATH = REPOSITORY_ROOT / "packaging" / "exiftool.lock.json"
 EXIFTOOL_DIR = PROJECT_ROOT / "runtime" / "exiftool"
 RELEASE_TEMPLATE_DIR = PROJECT_ROOT / "release_template"
 TESTS_DIR = PROJECT_ROOT / "tests"

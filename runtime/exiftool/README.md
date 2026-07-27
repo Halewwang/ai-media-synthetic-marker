@@ -2,16 +2,16 @@
 
 This directory is intentionally not committed except for this file.
 
-Run the following command from the repository root to download and verify the
-locked ExifTool Windows package:
+From the repository root on Windows x64, first perform the locked NuGet
+restore and then download and verify the locked ExifTool Windows package:
 
 ```powershell
-py -3.14 scripts\fetch_exiftool.py
+dotnet restore Emke.AiMarker.sln --locked-mode
+pwsh scripts\fetch-exiftool.ps1
 ```
 
-The expected version, URL, file size, and SHA-256 are stored in
-`packaging/exiftool.lock.json`.
-
-The fetch script also creates `exiftool-manifest.json`, which records every
-runtime file's size and SHA-256. Release builds reject missing, added, or
-modified ExifTool payload files.
+The expected version, platform, URL, byte length, and SHA-256 are stored in
+`packaging/exiftool.lock.json`. The release tool also creates
+`exiftool-manifest.json`, recording every runtime payload file's size and
+SHA-256. Integration tests and release builds reject a missing, added, or
+modified payload.

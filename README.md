@@ -1,7 +1,7 @@
-# AI 人物媒体 XMP 标记工具
+# EMKE AI Marker v2（Windows）
 
-一个面向 Windows 的本地桌面工具，用于在 JPG、JPEG、PNG 和 MP4
-媒体中写入并严格验证：
+EMKE AI Marker v2 是面向 Windows x64 的本地桌面工具，用于为已经由人工确认
+需要披露的 JPG、JPEG、PNG 和 MP4 媒体写入并严格验证：
 
 ```text
 XMP-dc:Subject
@@ -9,175 +9,98 @@ XMP-dc:Subject
    └─ rdf:li = contains-synthetic-performer
 ```
 
-普通用户无需输入命令行。程序不上传媒体，也不依赖 Windows 属性页
-判断 MP4 是否合规。
+应用完全在本机离线处理媒体，不上传文件、不连接亚马逊，也不发送遥测数据。
+它不会识别或判断媒体是否包含 AI 生成人物；选择哪些媒体使用此标记始终由使用者
+决定。
 
-本工具不会识别或判断媒体是否包含 AI 生成人物。“开始标记”会为
-“待标记”中所有尚未合规的支持文件添加标签，因此只能放入已经人工
-确认适用该披露要求的媒体。
+> 当前状态：v2 仍是内部预览和源码状态。仓库已具备 .NET 10 源码、测试与 Windows
+> 发布流水线，但当前 macOS 开发机不能证明 Windows 真实 UI、暂存包自检、ZIP、
+> 代码签名或公开发布可用。请勿把源码或 CI 配置理解为 GitHub Release 已可下载。
 
-## 核心功能
+## 使用方式
 
-- 递归扫描“待标记”及其子文件夹。
-- “开始标记”：保留已有 Subject 关键词，追加目标值，写入后严格回读。
-- “只读验证”：不修改媒体，只检查 XMP 并生成 CSV 记录。
-- 不把 `Microsoft:Category` 当作合规字段。
-- 已严格合规的文件不会重复写入。
-- 支持中文、空格、括号和大小写扩展名。
-- 单个文件失败后继续处理其他文件。
-- 运行记录包含实际字段值、XMP 结构、验证时间和 ExifTool 版本。
+应用采用一个窗口完成选择、处理和复查：
 
-## 普通用户使用
+1. 点击“添加文件”或“添加文件夹”，也可以把媒体文件或文件夹拖放到窗口。
+2. 确认列表中只有已经人工判断需要披露的媒体。
+3. 默认点击“开始标记”创建安全副本；也可以先点击“只读验证”。
+4. 任务完成后查看逐文件结果、输出位置和 CSV 运行记录。
 
-1. 从 GitHub Releases 下载
-   `ai-media-synthetic-marker-v1.0.0-windows-x64.zip`。
-2. 完整解压 ZIP，不要单独移动主 EXE。
-3. 人工确认媒体确实适用该标签，再放入“待标记”文件夹。
-4. 建议先点击“只读验证”。
-5. 如需补充标签，再点击“开始标记”。
-6. 在“运行记录”中查看 CSV 证据。
+支持扩展名为 `.jpg`、`.jpeg`、`.png`、`.mp4`，不区分大小写。文件夹会递归扫描
+并稳定排序；符号链接、联接点和其他重解析点不会被跟随。
 
-便携版本已经包含 Python 运行环境和 ExifTool，普通用户无需另外安装。
+### 默认：安全副本
 
-## 结果说明
+默认的 `MarkCopies` 模式保留原件，在原输入旁的 `EMKE 已标记` 目录中创建输出。
+应用先在受控的 owned temporary file 上复制和处理，再经过严格回读后原子提交。
+这个内部 identity-preserving 写入使用 ExifTool
+`-overwrite_original_in_place -P`；它是安全副本事务的一部分，不表示整个文件
+字节或所有文件系统时间、属性保持不变。
 
-- **验证通过**：字段中存在精确目标值，并且原始 XMP 中确认了
-  `dc:subject/rdf:Bag/rdf:li`。
-- **未标记**：`XMP-dc:Subject` 中没有精确目标值。
-- **验证失败**：读取异常，或者字段值与原始 XMP 结构不一致。
+### 高级原件模式
 
-MP4 即使已经正确写入 XMP，Windows“属性 → 详细信息 → 标记”仍可能
-显示为空。请以工具的严格回读结果为准。
+设置中的“高级原件模式”会直接修改原始媒体。每次运行都会再次要求确认，并使用
+ExifTool `-overwrite_original -P`；不创建备份或 `*_original` 文件。写入元数据会
+改变文件容器和整个文件校验值。只在已经另行备份并理解风险时使用。
 
-## 本地开发
+### 只读验证
 
-要求：
+“只读验证”不会调用媒体写入逻辑，也不会修改媒体。它仍会在本机应用数据目录生成
+CSV 运行记录；这是该模式唯一允许的输出。CSV 可能包含相对文件名和元数据证据，
+分享前必须脱敏。
 
-- Windows x64
-- Python 3.14.6，包含 Tkinter
-- ExifTool 13.59
+## 严格验证边界
 
-新电脑首次配置、精确依赖版本、环境验收和 GitHub 发布步骤见
-[BUILDING.md](BUILDING.md)。
+“验证通过”必须同时满足：
 
-首次准备 ExifTool：
+- `XMP-dc:Subject` 中存在区分大小写、完整匹配的
+  `contains-synthetic-performer`；
+- 原始 XMP 在正式 Dublin Core 和 RDF namespace 下存在
+  `dc:subject/rdf:Bag/rdf:li`；
+- 对应 `rdf:li` 的值与目标字符串完全一致。
 
-```powershell
-py -3.14 scripts\fetch_exiftool.py
-```
+已有其他 Subject 关键词会被保留；重复运行不会重复追加目标值。字段值与原始 XMP
+结构不一致时会报告失败，不会猜测或自动修复。`Microsoft:Category` 和 Windows
+属性页中的“标记”不能替代上述 XMP 证据，MP4 在资源管理器中显示为空也不能单独
+证明失败。
 
-双击源码版：
+单个文件失败不会中断其他文件。常规运行不会逐文件证明图片像素或视频媒体流哈希
+未变；受控集成测试中的 `ImageDataHash` 证据只覆盖仓库内四个受控 fixture。
 
-```text
-开发运行.cmd
-```
+## Windows x64 开发
 
-也可以直接运行：
+固定工具链：
 
-```powershell
-py -3.14 src\ai_media_marker.py
-```
+- Windows x64；
+- `global.json` 锁定的 .NET SDK 10.0.100；
+- PowerShell 7；
+- `packaging/exiftool.lock.json` 锁定的 ExifTool 13.59。
 
-源码版使用：
-
-```text
-dev/
-├─ 待标记/
-└─ 运行记录/
-```
-
-这些目录中的媒体和 CSV 不会被 Git 跟踪。
-
-## 运行测试
-
-测试只使用标准库和可控的 Fake ExifTool，不需要公开真实媒体：
+在 Windows PowerShell 7 中：
 
 ```powershell
-py -3.14 -m unittest discover -s tests -v
+dotnet restore Emke.AiMarker.sln --locked-mode
+pwsh scripts\fetch-exiftool.ps1
+$env:EMKE_EXIFTOOL = (Resolve-Path .\runtime\exiftool\exiftool.exe)
+dotnet test Emke.AiMarker.sln -c Release --no-restore
+dotnet run --project src\Emke.AiMarker.App\Emke.AiMarker.App.csproj -c Release --no-restore
 ```
 
-## 构建便携 EXE 和 ZIP
+完整环境准备、跨平台证据边界、发布包构建与标签规则见
+[BUILDING.md](BUILDING.md)。v2 的生产真源是 `src/Emke.AiMarker.*` 和
+`tools/Emke.AiMarker.Release`；Python/Tkinter v1 仅保存在
+`legacy/python/` 作为一个大版本周期的行为参考，不参与 v2 构建或发布包。
 
-开发与构建环境固定使用 Python 3.14.6 和 PyInstaller 6.21.0。构建脚本不会
-擅自安装缺失的软件；若环境不完整，会停止并显示所需命令。
+## 隐私、风险和范围
 
-准备构建依赖：
+- 不得把真实商品媒体、私人媒体、CSV 记录、日志、本地运行时或构建产物提交到仓库。
+- 平台上传、转码或发布过程可能移除 XMP；本工具不验证平台处理后的文件。
+- 当前 Windows 程序未签名，SmartScreen 可能显示未知发布者并要求额外确认。
+- “验证通过”只说明当前文件满足本工具的精确字段与结构检查，不构成法律意见，也
+  不保证任何平台最终审核结果。
+- 本项目与 Amazon 无隶属、合作、官方认可或保证关系。
 
-```powershell
-py -3.14 -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
-```
+原创源码采用 [MIT License](LICENSE)。生产包所含 .NET 10 runtime 与 ExifTool
+13.59 适用各自许可，见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-生成发布包：
-
-```powershell
-py -3.14 scripts\build_release.py
-```
-
-输出：
-
-```text
-dist/
-├─ ai-media-synthetic-marker-v1.0.0-windows-x64.zip
-└─ SHA256SUMS.txt
-```
-
-发布脚本采用白名单组合便携目录，并拒绝将媒体、CSV、`*_original`
-或源码缓存打入 ZIP；同时检查发布文本中是否意外写入本机绝对路径。
-
-## 项目结构
-
-```text
-src/ai_media_marker.py          唯一业务源码
-BUILDING.md                     新电脑配置、构建与发布清单
-scripts/fetch_exiftool.py       下载并校验固定版本 ExifTool
-scripts/build_release.py        测试、构建、组合和校验发布包
-packaging/marker_app.spec       PyInstaller 配置
-packaging/exiftool.lock.json    ExifTool 版本、URL 和 SHA-256
-packaging/licenses/             Tcl 与 Tk 的完整许可文本
-release_template/               发布说明和空目录模板
-tests/                          标准库单元测试
-runtime/exiftool/               本地运行组件，内容不提交 Git
-dev/                            本地开发媒体目录，内容不提交 Git
-```
-
-## 隐私与风险说明
-
-- 正式程序只处理本机文件，不上传媒体、不发送遥测数据，也不连接亚马逊。
-- 程序不进行 AI 内容识别；使用者必须先人工判断哪些媒体适用该标签。
-- 构建脚本可以联网下载固定版本的 ExifTool；这与正式程序处理媒体时
-  的行为不同。
-- “开始标记”会直接修改“待标记”中的原文件，并且不生成
-  `_original` 备份。重要文件请先自行备份。
-- “只读验证”不会修改媒体，但会在“运行记录”中创建 CSV。
-- CSV 会记录相对文件名、Subject 实际值、验证时间和软件版本；文件名
-  或元数据敏感时，请勿随意分享运行记录。
-- 写入元数据会改变文件容器和整个文件的校验值。程序不主动重新编码
-  图片像素或视频媒体流，但这不等于整个文件完全不变。
-- `-P` 只要求 ExifTool 尽量保留修改时间，不能保证所有文件系统时间
-  和属性完全不变。
-- 平台上传、转码或发布过程中可能移除元数据。本工具不验证上传后的
-  平台文件。
-- “验证通过”只表示当前文件满足本工具检查的 XMP 字段与结构，不构成
-  法律意见或平台最终审核保证。
-- 本项目与 Amazon 无隶属、合作或官方认可关系。
-- 当前 Windows EXE 未进行代码签名，SmartScreen 可能要求二次确认。
-
-下载发布包后，可在 PowerShell 中核对发布页提供的 SHA-256：
-
-```powershell
-Get-FileHash .\ai-media-synthetic-marker-v1.0.0-windows-x64.zip -Algorithm SHA256
-```
-
-## 许可证
-
-本仓库原创源码采用 [MIT License](LICENSE)。
-
-便携包还包含 ExifTool、Python、Tcl/Tk、PyInstaller bootloader 及其
-组成部分，它们保留各自许可证，不受本项目 MIT License 覆盖。详情见
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) 和发布包中的
-`licenses/`。
-
-## 参与贡献
-
-开发约束、测试命令和隐私注意事项见
-[CONTRIBUTING.md](CONTRIBUTING.md)。
+参与开发前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。

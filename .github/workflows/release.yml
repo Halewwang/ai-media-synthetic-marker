@@ -17,11 +17,12 @@ jobs:
   build:
     name: Build portable Windows package
     runs-on: windows-2022
-    timeout-minutes: 30
-    env:
-      PYTHONIOENCODING: utf-8
+    timeout-minutes: 45
     permissions:
       contents: read
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
 
     steps:
       - name: Check out repository
@@ -29,52 +30,52 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Python 3.14.6
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+      - name: Set up locked .NET SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
-          python-version: "3.14.6"
-          architecture: "x64"
-          cache: pip
-          cache-dependency-path: requirements-build.lock
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: '**/packages.lock.json'
 
-      - name: Install locked build dependencies
-        shell: pwsh
-        run: >-
-          python -m pip install --require-hashes
-          --only-binary=:all:
-          -r requirements-build.lock
-
-      - name: Verify release tag matches project version
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Verify exact v2 project version and immutable tag
         shell: pwsh
         env:
           RELEASE_TAG: ${{ github.ref_name }}
+          IS_TAG_BUILD: ${{ startsWith(github.ref, 'refs/tags/') }}
         run: |
-          $expectedTag = python -c "import tomllib; print('v' + tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])"
-          if ($env:RELEASE_TAG -ne $expectedTag) {
-            throw "Tag $env:RELEASE_TAG does not match project version $expectedTag."
+          [xml]$props = Get-Content -LiteralPath Directory.Build.props -Raw
+          $version = [string]$props.Project.PropertyGroup.Version
+          if ($version -cne '2.0.0') {
+            throw "Directory.Build.props must contain exact v2.0.0; actual: $version"
           }
 
-      - name: Fetch and verify locked ExifTool
-        shell: pwsh
-        run: python scripts/fetch_exiftool.py
+          if ($env:IS_TAG_BUILD -ceq 'true') {
+            if ($env:RELEASE_TAG -ceq 'v1.0.0') {
+              throw 'v1.0.0 is immutable and cannot be used for EMKE AI Marker v2.'
+            }
+
+            $expectedTag = "v$version"
+            if ($env:RELEASE_TAG -cne $expectedTag) {
+              throw "Tag $env:RELEASE_TAG does not match project version $expectedTag."
+            }
+          }
 
       - name: Build and verify release package
         shell: pwsh
-        run: python scripts/build_release.py
+        run: pwsh scripts/build-release.ps1
 
-      - name: Upload workflow artifacts
+      - name: Upload verified workflow artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ai-media-synthetic-marker-windows-${{ github.run_number }}
+          name: emke-ai-marker-windows-${{ github.run_id }}
           path: |
-            dist/*.zip
+            dist/emke-ai-marker-v2.0.0-windows-x64.zip
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
 
   publish:
-    name: Publish tagged release
+    name: Publish verified tagged release
     if: startsWith(github.ref, 'refs/tags/')
     needs: build
     runs-on: windows-2022
@@ -86,10 +87,10 @@ jobs:
       - name: Download verified build artifacts
         uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
         with:
-          name: ai-media-synthetic-marker-windows-${{ github.run_number }}
+          name: emke-ai-marker-windows-${{ github.run_id }}
           path: dist
 
-      - name: Create GitHub Release for tag
+      - name: Create GitHub Release for existing tag
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -106,8 +107,9 @@ jobs:
             throw "Missing checksum file: $checksumPath"
           }
 
-          $zipPath = $zipFiles[0].FullName
-          gh release create $env:RELEASE_TAG $zipPath $checksumPath `
+          gh release create $env:RELEASE_TAG `
+            $zipFiles[0].FullName `
+            $checksumPath `
             --repo $env:GH_REPO `
             --verify-tag `
             --generate-notes `

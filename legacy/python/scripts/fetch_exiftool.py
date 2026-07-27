@@ -17,8 +17,9 @@ from pathlib import Path, PurePosixPath
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LOCK_PATH = PROJECT_ROOT / "packaging" / "exiftool.lock.json"
-DEFAULT_TARGET = PROJECT_ROOT / "runtime" / "exiftool"
+REPOSITORY_ROOT = PROJECT_ROOT.parents[1]
+LOCK_PATH = REPOSITORY_ROOT / "packaging" / "exiftool.lock.json"
+DEFAULT_TARGET = REPOSITORY_ROOT / "runtime" / "exiftool"
 CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 MANIFEST_NAME = "exiftool-manifest.json"
 

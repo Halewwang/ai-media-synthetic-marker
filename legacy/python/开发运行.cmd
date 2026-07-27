@@ -5,7 +5,7 @@ setlocal
 set "PROJECT_DIR=%~dp0"
 set "APP_SCRIPT=%PROJECT_DIR%src\ai_media_marker.py"
 set "AI_MEDIA_MARKER_WORK_DIR=%PROJECT_DIR%dev"
-set "AI_MEDIA_MARKER_EXIFTOOL=%PROJECT_DIR%runtime\exiftool\exiftool.exe"
+set "AI_MEDIA_MARKER_EXIFTOOL=%PROJECT_DIR%..\..\runtime\exiftool\exiftool.exe"
 
 if not exist "%APP_SCRIPT%" (
     echo.
@@ -21,8 +21,7 @@ if not exist "%AI_MEDIA_MARKER_EXIFTOOL%" (
     echo 启动失败：尚未准备 ExifTool。
     echo 预期位置：%AI_MEDIA_MARKER_EXIFTOOL%
     echo.
-    echo 请先按照 README.md 的“本地开发”章节运行：
-    echo py -3.14 scripts\fetch_exiftool.py
+    echo 请先按照仓库根目录 BUILDING.md 准备锁定的 ExifTool 13.59。
     echo.
     echo 本启动器不会自动下载或安装任何依赖。
     echo.

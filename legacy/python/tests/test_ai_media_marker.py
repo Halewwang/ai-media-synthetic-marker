@@ -13,6 +13,7 @@ from xml.sax.saxutils import escape
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = PROJECT_ROOT.parents[1]
 SOURCE_DIR = PROJECT_ROOT / "src"
 if str(SOURCE_DIR) not in sys.path:
     sys.path.insert(0, str(SOURCE_DIR))
@@ -514,7 +515,7 @@ class VersionConsistencyTests(unittest.TestCase):
         self.assertEqual(marker.APP_VERSION, version_match.group(1))
 
         lock = json.loads(
-            (PROJECT_ROOT / "packaging" / "exiftool.lock.json").read_text(
+            (REPOSITORY_ROOT / "packaging" / "exiftool.lock.json").read_text(
                 encoding="utf-8"
             )
         )

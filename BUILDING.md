@@ -1,199 +1,168 @@
-# 新电脑构建与发布清单
+# Windows x64 构建与发布清单
 
-本文是本项目在新 Windows 电脑上配置源码运行、正式构建和 GitHub 发布环境的
-详细清单。日常使用便携版不需要这些开发依赖。
+本文只描述 EMKE AI Marker v2 的 .NET 10 Windows 生产路径。Python/Tkinter v1
+位于 `legacy/python/`，仅作为行为参考，不参与 v2 构建、组包或发布。
 
-## 1. 基础环境
+## 1. 固定环境
 
-必须满足：
+必须使用：
 
-- Windows x64。
-- Python **3.14.6 x64**，不能使用其他补丁版本。
-- Python 安装中包含 `pip`、Python Launcher 和 Tcl/Tk（Tkinter）。
-- GitHub Desktop 已登录，并已克隆
-  `xuqiang97/ai-media-synthetic-marker`。
-- 首次下载依赖和 ExifTool 时可以访问互联网。
+- Windows x64；
+- `global.json` 指定的 .NET SDK 10.0.100；
+- PowerShell 7（`pwsh`）；
+- Git；
+- `packaging/exiftool.lock.json` 锁定的 Windows x64 ExifTool 13.59。
 
-如果需要由 Codex 或终端直接创建 PR、检查 Actions 或管理 Release，还应安装并
-登录 GitHub CLI：
+仓库脚本不会擅自安装 .NET SDK、PowerShell 或其他缺失工具。若环境不完整，应停止
+并说明缺少项，得到维护者确认后再安装。日常构建不需要 Visual Studio、Node.js、
+Java 或其他运行时。
 
-```powershell
-gh auth login
-gh auth status
-```
-
-GitHub CLI 不参与本地程序运行和构建，因此版本不由本项目锁定。项目也不需要
-Visual Studio、.NET、Java 或 Node.js。
-
-## 2. 同步仓库
-
-在 GitHub Desktop 中切换到 `main`，依次执行 `Fetch origin` 和
-`Pull origin`，确保本地没有未提交修改。也可以在项目根目录检查：
+检查环境：
 
 ```powershell
+dotnet --version
+pwsh --version
 git status --short --branch
 ```
 
-开始修改时应从最新 `main` 创建独立分支；不要直接在过期分支上继续开发。
+`dotnet --version` 必须是 `10.0.100`。`global.json` 是 SDK 真源，不要通过
+roll-forward 绕过锁定版本。
 
-## 3. 验证 Python 与 Tkinter
+## 2. 锁定还原
 
-```powershell
-py -3.14 --version
-py -3.14 -c "import sys, platform, tkinter; print(sys.version); print(platform.machine()); print('Tcl/Tk', tkinter.Tcl().eval('info patchlevel'))"
-```
-
-合格条件：
-
-- Python 精确为 `3.14.6`。
-- 架构为 `AMD64` 或 `x86_64`。
-- Tcl/Tk 为 `8.6.x`。
-
-构建脚本会再次检查这些条件。`pip` 自身不要求与其他电脑版本相同，只要能够完成
-下一节的锁定安装即可。
-
-## 4. 安装锁定的构建依赖
-
-不要单独安装“最新版”PyInstaller。必须从项目锁定文件安装：
+在仓库根目录先执行：
 
 ```powershell
-py -3.14 -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
+dotnet restore Emke.AiMarker.sln --locked-mode
 ```
 
-`requirements-build.lock` 固定了以下完整依赖集及每个安装包的 SHA-256：
+所有 NuGet 项目都提交 `packages.lock.json`。不要删除锁文件、改用非 locked
+restore，或在未评审的情况下更新依赖。
 
-| 依赖 | 版本 |
-| --- | --- |
-| `altgraph` | `0.17.5` |
-| `packaging` | `26.2` |
-| `pefile` | `2024.8.26` |
-| `pyinstaller` | `6.21.0` |
-| `pyinstaller-hooks-contrib` | `2026.6` |
-| `pywin32-ctypes` | `0.2.3` |
-| `setuptools` | `83.0.0` |
+## 3. 获取并验证 ExifTool 13.59
 
-验证 PyInstaller：
+锁定还原成功后执行：
 
 ```powershell
-py -3.14 -m PyInstaller --version
+pwsh scripts\fetch-exiftool.ps1
 ```
 
-必须输出 `6.21.0`。
+发布工具会从锁定的 HTTPS 地址取得官方 Windows x64 压缩包，并验证精确字节长度、
+SHA-256、ZIP 路径、必要 payload、逐文件 manifest 和实际版本。不要手工替换
+`runtime\exiftool`，也不要绕过 `packaging\exiftool.lock.json`。
 
-## 5. 准备锁定的 ExifTool
-
-本地 ExifTool 不上传 GitHub。新电脑首次配置时运行：
+然后把已验证的可执行文件传给完整测试：
 
 ```powershell
-py -3.14 scripts\fetch_exiftool.py
+$env:EMKE_EXIFTOOL = (Resolve-Path .\runtime\exiftool\exiftool.exe)
+& $env:EMKE_EXIFTOOL -ver
 ```
 
-脚本会根据 `packaging/exiftool.lock.json` 下载并验证 Windows x64 版
-ExifTool `13.59`，包括压缩包大小、SHA-256、解压路径和逐文件完整性清单。
-不要手工替换或从其他电脑复制运行目录。
+版本必须精确输出 `13.59`。Task 10 的集成测试会在未设置该变量时主动失败，不会
+静默跳过。
 
-验证版本：
+## 4. 完整测试
+
+必须在 fetch 之后、同一个 PowerShell 会话中运行：
 
 ```powershell
-.\runtime\exiftool\exiftool.exe -ver
+dotnet test Emke.AiMarker.sln -c Release --no-restore
 ```
 
-必须输出 `13.59`。如果完整性检查失败，重新准备：
+该命令覆盖 Core、Infrastructure、App、Release 和真实 ExifTool Integration
+项目。不要先运行一个缺少 `EMKE_EXIFTOOL` 的 solution test，也不要把 Integration
+从 solution 中排除。
+
+如只诊断一个项目，可以运行对应 `dotnet test <project> -c Release --no-restore`，
+但发布前仍需回到完整 solution test。
+
+## 5. 启动和构建证据
+
+源码启动：
 
 ```powershell
-py -3.14 scripts\fetch_exiftool.py --force
+dotnet run --project src\Emke.AiMarker.App\Emke.AiMarker.App.csproj -c Release --no-restore
 ```
 
-## 6. 启动与测试
-
-源码版可以双击根目录的 `开发运行.cmd`，也可以运行：
+仅编译：
 
 ```powershell
-py -3.14 src\ai_media_marker.py
+dotnet build Emke.AiMarker.sln -c Release --no-restore
 ```
 
-正式构建前运行完整测试：
+`dotnet build` 证明源码可编译；`dotnet test` 证明相应自动化测试通过。它们都不单独
+证明真实 Windows UI、拖放、DPI/高对比度、SmartScreen、签名或安装/发布接受度。
+
+在非 Windows 主机加 `-p:EnableWindowsTargeting=true` 可以交叉编译 WPF 项目，
+但不能运行 Windows UI 或 Windows 专用行为。交叉 publish 也不等于 Windows
+暂存包自检通过。
+
+## 6. 构建便携 ZIP
+
+在满足前述条件的 Windows x64 PowerShell 7 环境中执行：
 
 ```powershell
-py -3.14 -m unittest discover -s tests -v
+pwsh scripts\build-release.ps1
 ```
 
-必须以 `OK` 结束。测试数量可能随项目演进而增加，不应把固定数量作为唯一判断
-标准。
+脚本顺序固定为：
 
-## 7. 正式构建
+1. locked restore；
+2. 获取并验证 ExifTool 13.59；
+3. 设置 `EMKE_EXIFTOOL` 并运行完整 Release solution test；
+4. self-contained `win-x64` publish；
+5. 以白名单组装 stage；
+6. 在 Windows 上执行 stage 内 `EMKE AI Marker.exe --self-test`；
+7. 再次验证 stage，生成确定性 ZIP 和 `SHA256SUMS.txt`。
 
-```powershell
-py -3.14 scripts\build_release.py
-```
-
-构建脚本会检查：
-
-- Windows、x64、Python 3.14.6 和 Tcl/Tk 8.6.x。
-- PyInstaller 6.21.0 及全部锁定依赖。
-- ExifTool 13.59、下载档案信息和逐文件完整性。
-- 项目版本、源码版本、发布说明和许可证。
-- 单元测试、EXE 无界面启动自检、ZIP 结构及隐私卫生。
-
-成功后生成：
+成功输出应为：
 
 ```text
 dist/
-├─ ai-media-synthetic-marker-v<项目版本>-windows-x64.zip
+├─ emke-ai-marker-v2.0.0-windows-x64.zip
 └─ SHA256SUMS.txt
 ```
 
-`build/` 和 `dist/` 是本地生成物，不应提交 Git。
+构建脚本会拒绝媒体、CSV、Python 源码、缓存、日志、`*_original`、链接/重解析点、
+意外文档和发布文本中的本机绝对路径。`build/`、`dist/` 与本地 ExifTool runtime
+都不得提交。
 
-## 8. 发布到 GitHub
+macOS 上可以验证 release tool 单元测试、部分交叉编译和交叉 publish；由于无法执行
+Windows stage self-test，不能据此声称 ZIP 已完成 Windows 验收。
 
-### 发布代码更新
+## 7. 签名与 Windows 验收
 
-1. 从最新 `main` 创建独立分支。
-2. 只修改和暂存当前需求涉及的文件。
-3. 运行相关测试；涉及构建或发布时运行完整构建。
-4. 提交并推送分支，创建 PR。
-5. 等待 GitHub Actions 的 Windows / Python 3.14.6 检查通过。
-6. 合并到 `main`。
-7. 其他电脑切换到 `main` 后执行 `Fetch origin` 和 `Pull origin`。
+当前 v2 为未签名内部预览。构建成功不等于：
 
-### 发布新的公开版本
+- 二进制已代码签名；
+- SmartScreen 不会警告；
+- Windows 11 x64 真实机器 UI、拖放、长路径、中文路径和文件属性已接受；
+- ZIP 已在干净 Windows 环境解压并完成端到端试用；
+- 已创建公开 GitHub Release。
 
-GitHub Actions 的手动 `Build Windows release` 只构建并保存工作流产物，不会创建
-公开 Release。只有推送与项目版本完全匹配的新 `v*` 标签，工作流才会在构建成功
-后发布 GitHub Release。
+这些是后续 Windows acceptance 与发布门禁，必须分别留下真实设备证据。
 
-发布新版本前必须统一更新 `pyproject.toml`、源码 `APP_VERSION`、测试和发布说明。
-已发布标签不可移动、删除或复用；尤其不要重新使用现有 `v1.0.0`。
+## 8. CI 与标签发布
 
-## 9. 不上云的本地内容
+CI 使用 `windows-2022`、锁定 SDK、locked restore，并在设置
+`EMKE_EXIFTOOL` 后运行完整 solution test。所有 GitHub Actions 必须固定到完整
+commit SHA。
 
-以下内容由 `.gitignore` 保护，拉取 GitHub 更新时通常会继续保留在本地：
+`Build Windows release` 的 `workflow_dispatch` 只构建并上传工作流 artifact，
+不会公开发布。只有已存在且与 `Directory.Build.props` 中版本精确匹配的 `v*` 标签
+才进入 publish job，并使用 `gh release create --verify-tag`。
 
-- `runtime/exiftool/` 下的实际运行组件。
-- `dev/待标记/` 中的私人媒体。
-- `dev/运行记录/` 中的 CSV。
-- `build/`、`dist/`、Python 缓存、日志和 `*_original` 备份。
-- 本地环境变量文件。
+`v1.0.0` 是不可变的历史标签，绝不能移动、删除、复用或作为 v2 发布标签。
+未经明确授权，不推送、不打标签、不创建 Release。
 
-提交前确认：
+## 9. 发布前卫生检查
 
 ```powershell
+git diff --check
 git status --short
+git diff --cached --stat
+git diff --cached
 ```
 
-不得上传真实媒体、CSV 运行记录、本地 ExifTool、构建产物或包含本机绝对路径的
-内容。
-
-## 10. 最短验收命令
-
-在项目根目录依次执行：
-
-```powershell
-py -3.14 -m pip install --require-hashes --only-binary=:all: -r requirements-build.lock
-py -3.14 scripts\fetch_exiftool.py
-py -3.14 -m unittest discover -s tests -v
-py -3.14 scripts\build_release.py
-```
-
-四步全部成功，才表示这台电脑具备本项目的正式构建能力。
+只暂存当前任务范围。确认暂存区没有私人媒体、CSV、运行日志、runtime payload、
+构建输出、环境变量文件、本机绝对路径或未授权生成物。

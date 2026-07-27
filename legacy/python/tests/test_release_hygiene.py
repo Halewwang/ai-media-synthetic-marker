@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = PROJECT_ROOT.parents[1]
 BUILD_SCRIPT = PROJECT_ROOT / "scripts" / "build_release.py"
 
 
@@ -85,7 +86,7 @@ class VersionMetadataTests(unittest.TestCase):
         self.assertEqual("13.59", str(lock["version"]))
 
         raw_lock = json.loads(
-            (PROJECT_ROOT / "packaging" / "exiftool.lock.json").read_text(
+            (REPOSITORY_ROOT / "packaging" / "exiftool.lock.json").read_text(
                 encoding="utf-8"
             )
         )
@@ -96,30 +97,18 @@ class VersionMetadataTests(unittest.TestCase):
             (PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8")
         )
         readme = (PROJECT_ROOT / "README.md").read_text(encoding="utf-8")
-        agents = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        contributing = (PROJECT_ROOT / "CONTRIBUTING.md").read_text(
-            encoding="utf-8"
-        )
-        notices = (PROJECT_ROOT / "THIRD_PARTY_NOTICES.md").read_text(
+        notices = (REPOSITORY_ROOT / "THIRD_PARTY_NOTICES.md").read_text(
             encoding="utf-8"
         )
         launcher = (PROJECT_ROOT / "开发运行.cmd").read_text(encoding="utf-8")
-        ci_workflow = (
-            PROJECT_ROOT / ".github" / "workflows" / "ci.yml"
-        ).read_text(encoding="utf-8")
-        release_workflow = (
-            PROJECT_ROOT / ".github" / "workflows" / "release.yml"
-        ).read_text(encoding="utf-8")
 
         self.assertEqual((3, 14, 6), self.build_release.EXPECTED_PYTHON)
         self.assertEqual("==3.14.6", pyproject["project"]["requires-python"])
         self.assertIn("Python 3.14.6", readme)
-        self.assertIn("Python 3.14.6", agents)
-        self.assertIn("Python 3.14.6", contributing)
         self.assertIn("CPython 3.14.6", notices)
+        self.assertIn("not built", readme)
+        self.assertIn("not included in the v2 ZIP", notices)
         self.assertIn("(3, 14, 6)", launcher)
-        self.assertIn('python-version: "3.14.6"', ci_workflow)
-        self.assertIn('python-version: "3.14.6"', release_workflow)
 
 
 class ReleaseStageHygieneTests(unittest.TestCase):
