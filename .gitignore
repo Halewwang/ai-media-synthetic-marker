@@ -28,6 +28,8 @@ __pypackages__/
 # Build and release output
 /build/
 /dist/
+**/bin/
+**/obj/
 *.manifest
 *.spec
 *.toc
