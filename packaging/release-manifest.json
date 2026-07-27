@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "product": "EMKE AI Marker",
+  "version": "2.0.0",
+  "platform": "windows-x64",
+  "required_paths": [
+    "EMKE AI Marker.exe",
+    "使用说明.txt",
+    "LICENSE.txt",
+    "THIRD_PARTY_NOTICES.txt",
+    "exiftool/exiftool.exe",
+    "exiftool/exiftool-manifest.json",
+    "licenses/dotnet/LICENSE.txt",
+    "licenses/dotnet/ThirdPartyNotices.txt",
+    "示例输出/EMKE 已标记/"
+  ]
+}
