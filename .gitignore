@@ -72,6 +72,7 @@ __pypackages__/
 
 # Editors and operating-system files
 .superpowers/
+.worktrees/
 .vscode/
 .idea/
 *.swp
