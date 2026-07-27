@@ -3,6 +3,7 @@ using Emke.AiMarker.App.ViewModels;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Threading;
 
 namespace Emke.AiMarker.App;
 
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
 
     private async Task HandleRunningCloseAsync(MainWindowViewModel viewModel)
     {
+        bool closePosted = false;
         try
         {
             if (!await prompts.ConfirmSafeStopForCloseAsync())
@@ -49,26 +51,66 @@ public partial class MainWindow : Window
             }
 
             await viewModel.RequestSafeStopAndWaitAsync();
+            if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            _ = Dispatcher.BeginInvoke(
+                DispatcherPriority.Normal,
+                new Action(CompleteDeferredClose));
+            closePosted = true;
+        }
+        catch (Exception exception)
+        {
+            await ShowCloseErrorAsync(exception);
+        }
+        finally
+        {
+            if (!closePosted)
+            {
+                closeWorkflowActive = false;
+            }
+        }
+    }
+
+    private void CompleteDeferredClose()
+    {
+        try
+        {
+            if (!IsLoaded
+                || Dispatcher.HasShutdownStarted
+                || Dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
             closeAllowed = true;
             Close();
         }
         catch (Exception exception)
         {
-            string detail = string.IsNullOrWhiteSpace(exception.Message)
-                ? exception.GetType().Name
-                : exception.Message;
-            try
-            {
-                await prompts.ShowErrorAsync(detail);
-            }
-            catch
-            {
-                // Closing remains cancelled if the error surface itself is unavailable.
-            }
+            closeAllowed = false;
+            _ = ShowCloseErrorAsync(exception);
         }
         finally
         {
             closeWorkflowActive = false;
+        }
+    }
+
+    private async Task ShowCloseErrorAsync(Exception exception)
+    {
+        string detail = string.IsNullOrWhiteSpace(exception.Message)
+            ? exception.GetType().Name
+            : exception.Message;
+        try
+        {
+            await prompts.ShowErrorAsync(detail);
+        }
+        catch
+        {
+            // Closing remains cancelled if the error surface itself is unavailable.
         }
     }
 

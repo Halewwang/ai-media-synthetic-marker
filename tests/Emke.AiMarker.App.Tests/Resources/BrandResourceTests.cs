@@ -326,6 +326,33 @@ public sealed partial class BrandResourceTests
         Assert.Contains("singleInstance?.Dispose()", startup, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Running_close_is_deferred_until_after_the_initial_closing_handler_returns()
+    {
+        string codeBehind = File.ReadAllText(
+            FromRoot("src", "Emke.AiMarker.App", "MainWindow.xaml.cs"));
+        int waitCompleted = codeBehind.IndexOf(
+            "await viewModel.RequestSafeStopAndWaitAsync();",
+            StringComparison.Ordinal);
+        int dispatcherPost = codeBehind.IndexOf(
+            "Dispatcher.BeginInvoke",
+            waitCompleted,
+            StringComparison.Ordinal);
+        int allowClose = codeBehind.IndexOf(
+            "closeAllowed = true;",
+            waitCompleted,
+            StringComparison.Ordinal);
+        int close = codeBehind.IndexOf(
+            "Close();",
+            waitCompleted,
+            StringComparison.Ordinal);
+
+        Assert.True(waitCompleted >= 0);
+        Assert.True(dispatcherPost > waitCompleted);
+        Assert.True(allowClose > dispatcherPost);
+        Assert.True(close > allowClose);
+    }
+
     private static void AssertResource(
         XDocument document,
         string key,
