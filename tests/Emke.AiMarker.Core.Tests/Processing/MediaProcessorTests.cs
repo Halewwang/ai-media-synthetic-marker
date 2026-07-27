@@ -38,8 +38,9 @@ public sealed class MediaProcessorTests
         Assert.True(sealedIndex > verificationIndex);
         Assert.True(commitIndex > sealedIndex);
         Assert.True(files.SealVerifiedCalled);
-        Assert.Contains($"write:{plan.TempPath}", exif.Calls);
+        Assert.Contains($"write-preserving:{plan.TempPath}", exif.Calls);
         Assert.DoesNotContain($"write:{plan.SourcePath}", exif.Calls);
+        Assert.Equal(1, exif.IdentityPreservingWriteCount);
     }
 
     [Fact]
@@ -198,6 +199,7 @@ public sealed class MediaProcessorTests
         Assert.Contains("Subject", result.Error);
         Assert.True(safety.ValidateCalled);
         Assert.Equal(1, exif.WriteCount);
+        Assert.Equal(0, exif.IdentityPreservingWriteCount);
         Assert.False(files.CommitCalled);
     }
 

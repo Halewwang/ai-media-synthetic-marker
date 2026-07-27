@@ -10,6 +10,10 @@ public interface IExifToolClient
 
     Task WriteMarkerAsync(string path, CancellationToken cancellationToken);
 
+    Task WriteMarkerPreservingIdentityAsync(
+        string path,
+        CancellationToken cancellationToken);
+
     Task<ReadOnlyMemory<byte>> ReadRawXmpAsync(
         string path,
         CancellationToken cancellationToken);

@@ -110,6 +110,21 @@ public sealed class ExifToolClient : IExifToolClient
             cancellationToken);
     }
 
+    public async Task WriteMarkerPreservingIdentityAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(
+            [
+                "-overwrite_original_in_place",
+                "-P",
+                $"-XMP-dc:Subject+={MarkerContract.Marker}",
+                path,
+            ],
+            MediaTimeout,
+            cancellationToken);
+    }
+
     public async Task<ReadOnlyMemory<byte>> ReadRawXmpAsync(
         string path,
         CancellationToken cancellationToken)

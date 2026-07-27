@@ -29,6 +29,28 @@ public sealed class ExifToolClientTests
     }
 
     [Fact]
+    public async Task Identity_preserving_write_uses_in_place_overwrite_and_same_append()
+    {
+        var runner = new RecordingProcessRunner();
+        var client = new ExifToolClient(Executable, runner);
+
+        await client.WriteMarkerPreservingIdentityAsync(
+            @"D:\owned temp\商品.jpg",
+            CancellationToken.None);
+
+        Assert.Equal(
+            [
+                "-overwrite_original_in_place",
+                "-P",
+                "-XMP-dc:Subject+=contains-synthetic-performer",
+                @"D:\owned temp\商品.jpg",
+            ],
+            runner.LastArgumentFileLines);
+        Assert.Equal(TimeSpan.FromMinutes(5), runner.LastTimeout);
+        Assert.Equal(1, runner.CallCount);
+    }
+
+    [Fact]
     public async Task Read_subjects_requests_only_explicit_xmp_dc_subject()
     {
         var runner = RecordingProcessRunner.WithStdout(

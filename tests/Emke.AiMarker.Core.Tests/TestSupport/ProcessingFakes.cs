@@ -107,6 +107,8 @@ internal sealed class FakeExifToolClient(
 
     public int WriteCount { get; private set; }
 
+    public int IdentityPreservingWriteCount { get; private set; }
+
     public List<string> Calls { get; } = [];
 
     public List<CancellationToken> CancellationTokens { get; } = [];
@@ -144,9 +146,28 @@ internal sealed class FakeExifToolClient(
 
     public Task WriteMarkerAsync(string path, CancellationToken cancellationToken)
     {
+        return WriteMarkerCore(path, cancellationToken, $"write:{path}");
+    }
+
+    public Task WriteMarkerPreservingIdentityAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        IdentityPreservingWriteCount++;
+        return WriteMarkerCore(
+            path,
+            cancellationToken,
+            $"write-preserving:{path}");
+    }
+
+    private Task WriteMarkerCore(
+        string path,
+        CancellationToken cancellationToken,
+        string call)
+    {
         _writeAttempted = true;
         WriteCount++;
-        Record($"write:{path}", cancellationToken);
+        Record(call, cancellationToken);
         if (_sharedSubjects is not null)
         {
             _sharedSubjects.Clear();

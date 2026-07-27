@@ -94,9 +94,18 @@ public sealed class MediaProcessor(
             }
 
             IReadOnlyList<string> beforeWriteSubjects = subjects.ToArray();
-            await exifTool.WriteMarkerAsync(
-                media.WorkingPath,
-                CancellationToken.None);
+            if (mode == RunMode.MarkCopies)
+            {
+                await exifTool.WriteMarkerPreservingIdentityAsync(
+                    media.WorkingPath,
+                    CancellationToken.None);
+            }
+            else
+            {
+                await exifTool.WriteMarkerAsync(
+                    media.WorkingPath,
+                    CancellationToken.None);
+            }
             subjects = await exifTool.ReadSubjectsAsync(
                 media.WorkingPath,
                 CancellationToken.None);

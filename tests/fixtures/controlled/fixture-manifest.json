@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "generator_versions": {
+    "ffmpeg": "7.1.1",
+    "exiftool": "13.59"
+  },
+  "files": [
+    {
+      "path": "fixture.jpeg",
+      "byte_length": 3119,
+      "sha256": "989f8ef247d1c70402058975312bdf719192ec81905bb05a9f8d9cb9b2267ec7",
+      "generation_commands": [
+        "Copy-Item fixture.jpg fixture.jpeg",
+        "exiftool -overwrite_original -XMP-dc:Subject=emke-existing-fixture-subject fixture.jpg fixture.jpeg fixture.png fixture.mp4"
+      ]
+    },
+    {
+      "path": "fixture.jpg",
+      "byte_length": 3119,
+      "sha256": "989f8ef247d1c70402058975312bdf719192ec81905bb05a9f8d9cb9b2267ec7",
+      "generation_commands": [
+        "ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=white:s=16x16:d=1 -frames:v 1 -q:v 2 -y fixture.jpg",
+        "exiftool -overwrite_original -XMP-dc:Subject=emke-existing-fixture-subject fixture.jpg fixture.jpeg fixture.png fixture.mp4"
+      ]
+    },
+    {
+      "path": "fixture.mp4",
+      "byte_length": 5149,
+      "sha256": "1b51f16ea4e312fb66dfd10a4a2e87ca563462dcdbd11773b8c485785d2feec3",
+      "generation_commands": [
+        "ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=black:s=16x16:d=1 -an -c:v libx264 -pix_fmt yuv420p -movflags +faststart -metadata title=EMKE-Controlled-Test-Fixture -y fixture.mp4",
+        "exiftool -overwrite_original -XMP-dc:Subject=emke-existing-fixture-subject fixture.jpg fixture.jpeg fixture.png fixture.mp4"
+      ]
+    },
+    {
+      "path": "fixture.png",
+      "byte_length": 572,
+      "sha256": "48b1f3408b05f8b6af30a81ad720e0a8174770ec97b3f4f457b2f975f7f4a41d",
+      "generation_commands": [
+        "ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=white:s=16x16:d=1 -frames:v 1 -y fixture.png",
+        "exiftool -overwrite_original -XMP-dc:Subject=emke-existing-fixture-subject fixture.jpg fixture.jpeg fixture.png fixture.mp4"
+      ]
+    }
+  ]
+}

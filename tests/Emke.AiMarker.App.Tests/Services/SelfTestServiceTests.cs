@@ -178,6 +178,11 @@ public sealed class SelfTestServiceTests : IDisposable
             CancellationToken cancellationToken) =>
             throw new NotSupportedException();
 
+        public Task WriteMarkerPreservingIdentityAsync(
+            string path,
+            CancellationToken cancellationToken) =>
+            throw new NotSupportedException();
+
         public Task<ReadOnlyMemory<byte>> ReadRawXmpAsync(
             string path,
             CancellationToken cancellationToken) =>

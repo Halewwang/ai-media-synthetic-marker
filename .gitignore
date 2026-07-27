@@ -66,6 +66,13 @@ __pypackages__/
 *.[mM][pP]4
 *.[cC][sS][vV]
 !docs/assets/**/*.[pP][nN][gG]
+!/tests/fixtures/
+!/tests/fixtures/controlled/
+!/tests/fixtures/controlled/fixture.jpg
+!/tests/fixtures/controlled/fixture.jpeg
+!/tests/fixtures/controlled/fixture.png
+!/tests/fixtures/controlled/fixture.mp4
+!/tests/fixtures/controlled/fixture-manifest.json
 
 # Local configuration
 .env
