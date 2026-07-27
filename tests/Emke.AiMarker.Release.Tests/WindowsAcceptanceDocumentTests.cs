@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Emke.AiMarker.Release.Tests.TestSupport;
 
 namespace Emke.AiMarker.Release.Tests;
 
@@ -84,18 +85,7 @@ public sealed class WindowsAcceptanceDocumentTests
     public void Checklist_reads_package_metadata_only_after_exact_extraction_and_checksum()
     {
         string checklist = Read("docs/validation/windows-11-x64-smoke.md");
-        string initialization = Section(checklist, "## Required metadata");
         string extraction = Section(checklist, "### Step 1 —");
-        string checksum = Section(checklist, "### Step 2 —");
-
-        Assert.DoesNotContain(
-            "(Get-Item -LiteralPath $AppPath)",
-            initialization,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain(
-            "& $ExifToolPath -ver",
-            initialization,
-            StringComparison.Ordinal);
 
         using JsonDocument manifest = JsonDocument.Parse(
             Read("packaging/release-manifest.json"));
@@ -137,51 +127,62 @@ public sealed class WindowsAcceptanceDocumentTests
             extraction,
             StringComparison.Ordinal);
 
-        Assert.Contains(
-            "(Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion",
-            checksum,
-            StringComparison.Ordinal);
-        Assert.Contains("& $ExifToolPath -ver", checksum, StringComparison.Ordinal);
-        int expand = checklist.IndexOf("Expand-Archive", StringComparison.Ordinal);
-        int hashComparison = checklist.IndexOf(
-            "if ($ActualZipHash -ne $ExpectedZipHash)",
-            StringComparison.Ordinal);
-        int appVersion = checklist.IndexOf(
-            "(Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion",
-            StringComparison.Ordinal);
-        int exifToolVersion = checklist.IndexOf(
-            "& $ExifToolPath -ver",
-            StringComparison.Ordinal);
-        Assert.True(expand >= 0);
-        Assert.True(hashComparison > expand);
-        Assert.True(appVersion > hashComparison);
-        Assert.True(exifToolVersion > hashComparison);
+        AssertPackageExecutionContract(checklist);
     }
 
     [Fact]
     public void Read_only_step_proves_every_output_hash_is_unchanged()
     {
         string checklist = Read("docs/validation/windows-11-x64-smoke.md");
-        string readOnly = Section(checklist, "### Step 8 —");
 
-        Assert.Contains("$BeforeOutputHashes = @{}", readOnly, StringComparison.Ordinal);
-        Assert.Contains("$AfterOutputHashes = @{}", readOnly, StringComparison.Ordinal);
-        Assert.Contains(
-            "Before = $BeforeOutputHashes[$OutputFile.Name]",
-            readOnly,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "After = $AfterOutputHashes[$OutputFile.Name]",
-            readOnly,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "Equal = ($AfterOutputHashes[$OutputFile.Name] -eq $BeforeOutputHashes[$OutputFile.Name])",
-            readOnly,
-            StringComparison.Ordinal);
-        Assert.Contains(
-            "all four output SHA-256 values are unchanged",
-            readOnly,
-            StringComparison.Ordinal);
+        AssertReadOnlyExecutionContract(checklist);
+    }
+
+    [Fact]
+    public void Execution_contract_rejects_comments_and_mismatch_branch_dead_code()
+    {
+        string checklist = Read("docs/validation/windows-11-x64-smoke.md");
+        const string regexAssignment =
+            "$ChecksumMatch = [regex]::Match($ChecksumLines[0], '^(?<hash>[0-9a-f]{64})  (?<filename>[^\\r\\n]+)$')";
+        string commentedRegex = ReplaceRequired(
+            checklist,
+            regexAssignment,
+            $"# {regexAssignment}");
+        Assert.ThrowsAny<Exception>(
+            () => AssertPackageExecutionContract(commentedRegex));
+
+        const string gatedVersions =
+            """
+            if ($ActualZipHash -ne $ExpectedZipHash) {
+              throw "Product ZIP SHA-256 does not match SHA256SUMS.txt."
+            }
+
+            $AppFileVersion = (Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion
+            $ExifToolVersion = (& $ExifToolPath -ver).Trim()
+            """;
+        const string versionsInsideMismatchBranch =
+            """
+            if ($ActualZipHash -ne $ExpectedZipHash) {
+              $AppFileVersion = (Get-Item -LiteralPath $AppPath).VersionInfo.FileVersion
+              $ExifToolVersion = (& $ExifToolPath -ver).Trim()
+              throw "Product ZIP SHA-256 does not match SHA256SUMS.txt."
+            }
+            """;
+        string deadBranchVersions = ReplaceRequired(
+            checklist,
+            gatedVersions,
+            versionsInsideMismatchBranch);
+        Assert.ThrowsAny<Exception>(
+            () => AssertPackageExecutionContract(deadBranchVersions));
+
+        const string aggregateThrow =
+            "throw \"Read-only verification changed output bytes: $($OutputHashMismatches -join ', ')\"";
+        string commentedAggregateThrow = ReplaceRequired(
+            checklist,
+            aggregateThrow,
+            $"# {aggregateThrow}");
+        Assert.ThrowsAny<Exception>(
+            () => AssertReadOnlyExecutionContract(commentedAggregateThrow));
     }
 
     [Fact]
@@ -220,6 +221,278 @@ public sealed class WindowsAcceptanceDocumentTests
         Assert.Equal("Final result: blocked", finalLine);
         Assert.Contains(items, row => row[1] != "pass");
         Assert.NotEqual("Final result: passed", finalLine);
+    }
+
+    private static void AssertPackageExecutionContract(string checklist)
+    {
+        PowerShellBlock initializationBlock = Assert.Single(
+            PowerShellDocumentAnalysis.BlocksInSection(
+                checklist,
+                "## Required metadata"));
+        PowerShellBlock extractionBlock = Assert.Single(
+            PowerShellDocumentAnalysis.BlocksInSection(
+                checklist,
+                "### Step 1 —"));
+        PowerShellBlock checksumBlock = Assert.Single(
+            PowerShellDocumentAnalysis.BlocksInSection(
+                checklist,
+                "### Step 2 —"));
+        PowerShellAst initialization = PowerShellDocumentAnalysis.Analyze(
+            initializationBlock);
+        PowerShellAst extraction = PowerShellDocumentAnalysis.Analyze(
+            extractionBlock);
+        PowerShellAst checksum = PowerShellDocumentAnalysis.Analyze(checksumBlock);
+
+        Assert.DoesNotContain(
+            initialization.Commands,
+            command =>
+                command.Label.Equals("Get-Item", StringComparison.OrdinalIgnoreCase)
+                && command.Text.Contains("$AppPath", StringComparison.Ordinal));
+        Assert.DoesNotContain(
+            initialization.Commands,
+            command => command.Text.TrimStart().StartsWith(
+                "& $ExifToolPath",
+                StringComparison.Ordinal));
+
+        PowerShellAstNode expand = Assert.Single(
+            extraction.Commands,
+            command => command.Label.Equals(
+                "Expand-Archive",
+                StringComparison.OrdinalIgnoreCase));
+        PowerShellAstNode lineCount = TopLevelIf(
+            checksum,
+            "$ChecksumLines.Count -ne 1");
+        PowerShellAstNode invalidFormat = TopLevelIf(
+            checksum,
+            "-not $ChecksumMatch.Success");
+        PowerShellAstNode wrongFilename = TopLevelIf(
+            checksum,
+            "$ChecksumZipFileName -cne $ExpectedZipFileName");
+        PowerShellAstNode wrongHash = TopLevelIf(
+            checksum,
+            "$ActualZipHash -ne $ExpectedZipHash");
+        Assert.True(checksum.HasDirectThrow(lineCount));
+        Assert.True(checksum.HasDirectThrow(invalidFormat));
+        Assert.True(checksum.HasDirectThrow(wrongFilename));
+        Assert.True(checksum.HasDirectThrow(wrongHash));
+
+        PowerShellAstNode checksumLines = TopLevelAssignment(
+            checksum,
+            "$ChecksumLines");
+        Assert.Contains(
+            "@(Get-Content -LiteralPath $ChecksumPath -Encoding utf8)",
+            checksumLines.Text,
+            StringComparison.Ordinal);
+        PowerShellAstNode checksumMatch = TopLevelAssignment(
+            checksum,
+            "$ChecksumMatch");
+        Assert.Contains(
+            "'^(?<hash>[0-9a-f]{64})  (?<filename>[^\\r\\n]+)$'",
+            checksumMatch.Text,
+            StringComparison.Ordinal);
+        PowerShellAstNode expectedFilename = TopLevelAssignment(
+            checksum,
+            "$ExpectedZipFileName");
+        Assert.Contains(
+            "Split-Path -Path $ZipPath -Leaf",
+            expectedFilename.Text,
+            StringComparison.Ordinal);
+        PowerShellAstNode checksumFilename = TopLevelAssignment(
+            checksum,
+            "$ChecksumZipFileName");
+        Assert.Contains(
+            "$ChecksumMatch.Groups[\"filename\"].Value",
+            checksumFilename.Text,
+            StringComparison.Ordinal);
+        PowerShellAstNode expectedHash = TopLevelAssignment(
+            checksum,
+            "$ExpectedZipHash");
+        Assert.Contains(
+            "$ChecksumMatch.Groups[\"hash\"].Value",
+            expectedHash.Text,
+            StringComparison.Ordinal);
+        PowerShellAstNode actualHash = TopLevelAssignment(
+            checksum,
+            "$ActualZipHash");
+        Assert.Contains(
+            "Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256",
+            actualHash.Text,
+            StringComparison.Ordinal);
+        PowerShellAstNode appVersion = TopLevelAssignment(
+            checksum,
+            "$AppFileVersion");
+        PowerShellAstNode exifToolVersion = TopLevelAssignment(
+            checksum,
+            "$ExifToolVersion");
+
+        AssertOrdered(
+            checksumLines,
+            lineCount,
+            checksumMatch,
+            invalidFormat,
+            expectedFilename,
+            checksumFilename,
+            wrongFilename,
+            expectedHash,
+            actualHash,
+            wrongHash,
+            appVersion,
+            exifToolVersion);
+        Assert.True(
+            extraction.GlobalStart(expand)
+            < checksum.GlobalStart(appVersion));
+        Assert.True(
+            extraction.GlobalStart(expand)
+            < checksum.GlobalStart(exifToolVersion));
+    }
+
+    private static void AssertReadOnlyExecutionContract(string checklist)
+    {
+        IReadOnlyList<PowerShellBlock> blocks =
+            PowerShellDocumentAnalysis.BlocksInSection(
+                checklist,
+                "### Step 8 —");
+        Assert.Equal(3, blocks.Count);
+        PowerShellAst before = PowerShellDocumentAnalysis.Analyze(blocks[0]);
+        PowerShellAst after = PowerShellDocumentAnalysis.Analyze(blocks[1]);
+        PowerShellAst exifTool = PowerShellDocumentAnalysis.Analyze(blocks[2]);
+
+        PowerShellAstNode beforeHashes = TopLevelAssignment(
+            before,
+            "$BeforeOutputHashes");
+        PowerShellAstNode afterHashes = TopLevelAssignment(
+            after,
+            "$AfterOutputHashes");
+        PowerShellAstNode mismatches = TopLevelAssignment(
+            after,
+            "$OutputHashMismatches");
+        PowerShellAstNode aggregate = TopLevelIf(
+            after,
+            "$OutputHashMismatches.Count -ne 0");
+        Assert.True(after.HasDirectThrow(aggregate));
+        PowerShellAstNode beforeLoop = Assert.Single(
+            before.TopLevelStatements,
+            node =>
+                node.Label == "ForEachStatementAst"
+                && node.Text.StartsWith(
+                    "foreach ($OutputFile in $OutputFiles)",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            before.Commands,
+            command =>
+                command.Label.Equals(
+                    "Get-FileHash",
+                    StringComparison.OrdinalIgnoreCase)
+                && command.Start >= beforeLoop.Start
+                && command.End <= beforeLoop.End);
+        PowerShellAstNode afterLoop = Assert.Single(
+            after.TopLevelStatements,
+            node =>
+                node.Label == "ForEachStatementAst"
+                && node.Text.StartsWith(
+                    "foreach ($OutputFile in $OutputFiles)",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            after.Assignments,
+            assignment =>
+                assignment.Label == "$OutputHashMismatches"
+                && assignment.Text.Contains(
+                    "+= $OutputFile.Name",
+                    StringComparison.Ordinal)
+                && assignment.Start >= afterLoop.Start
+                && assignment.End <= afterLoop.End);
+        PowerShellAstNode evidence = Assert.Single(
+            after.Hashtables,
+            table =>
+                table.Label == "File,Before,After,Equal"
+                && table.Start >= afterLoop.Start
+                && table.End <= afterLoop.End);
+        PowerShellAstNode equality = Assert.Single(
+            after.BinaryExpressions,
+            expression =>
+                expression.Text ==
+                    "$AfterOutputHashes[$OutputFile.Name] -eq $BeforeOutputHashes[$OutputFile.Name]"
+                && expression.Start >= evidence.Start
+                && expression.End <= evidence.End);
+        Assert.Contains(
+            after.Commands,
+            command =>
+                command.Label.Equals(
+                    "Get-FileHash",
+                    StringComparison.OrdinalIgnoreCase)
+                && command.Start >= afterLoop.Start
+                && command.End <= afterLoop.End);
+        PowerShellAstNode independentExifTool = Assert.Single(
+            exifTool.Commands,
+            command => command.Text.Contains(
+                "-XMP-dc:Subject",
+                StringComparison.Ordinal));
+
+        int click = checklist.IndexOf(
+            "click “只读验证”",
+            blocks[0].ContentEnd,
+            StringComparison.Ordinal);
+        Assert.InRange(click, blocks[0].ContentEnd, blocks[1].ContentStart - 1);
+        Assert.True(beforeHashes.Start >= 0);
+        Assert.True(equality.Start >= 0);
+        AssertOrdered(beforeHashes, beforeLoop);
+        AssertOrdered(afterHashes, mismatches, afterLoop, aggregate);
+        Assert.True(
+            after.GlobalStart(aggregate)
+            < exifTool.GlobalStart(independentExifTool));
+    }
+
+    private static PowerShellAstNode TopLevelAssignment(
+        PowerShellAst ast,
+        string variable)
+    {
+        PowerShellAstNode statement = Assert.Single(
+            ast.TopLevelStatements,
+            node =>
+                node.Label == "AssignmentStatementAst"
+                && node.Text.TrimStart().StartsWith(
+                    $"{variable} =",
+                    StringComparison.Ordinal));
+        Assert.Contains(
+            ast.Assignments,
+            assignment =>
+                assignment.Start == statement.Start
+                && assignment.Label == variable);
+        return statement;
+    }
+
+    private static PowerShellAstNode TopLevelIf(
+        PowerShellAst ast,
+        string condition)
+    {
+        PowerShellAstNode statement = Assert.Single(
+            ast.TopLevelStatements,
+            node =>
+                node.Label == "IfStatementAst"
+                && ast.IfStatements.Any(candidate =>
+                    candidate.Start == node.Start
+                    && candidate.Label.Contains(
+                        condition,
+                        StringComparison.Ordinal)));
+        return statement;
+    }
+
+    private static void AssertOrdered(params PowerShellAstNode[] statements)
+    {
+        Assert.All(
+            statements.Zip(statements.Skip(1)),
+            pair => Assert.True(
+                pair.First.End <= pair.Second.Start,
+                $"Expected '{pair.First.Text}' before '{pair.Second.Text}'."));
+    }
+
+    private static string ReplaceRequired(
+        string value,
+        string oldValue,
+        string newValue)
+    {
+        Assert.Contains(oldValue, value, StringComparison.Ordinal);
+        return value.Replace(oldValue, newValue, StringComparison.Ordinal);
     }
 
     private static IReadOnlyList<string[]> TableRows(string document, string heading)

@@ -172,9 +172,22 @@ all eight nested release-manifest file paths are `Leaf` files; the required
 PowerShell / action:
 
 ```powershell
-$ChecksumLine = (Get-Content -LiteralPath $ChecksumPath -Encoding utf8).Trim()
-$ExpectedZipHash = ($ChecksumLine -split "\s+")[0].ToLowerInvariant()
+$ChecksumLines = @(Get-Content -LiteralPath $ChecksumPath -Encoding utf8)
+if ($ChecksumLines.Count -ne 1) {
+  throw "SHA256SUMS.txt must contain exactly one line."
+}
+$ChecksumMatch = [regex]::Match($ChecksumLines[0], '^(?<hash>[0-9a-f]{64})  (?<filename>[^\r\n]+)$')
+if (-not $ChecksumMatch.Success) {
+  throw "SHA256SUMS.txt must use: <64 lowercase hex><two spaces><ZIP filename>."
+}
+$ExpectedZipFileName = Split-Path -Path $ZipPath -Leaf
+$ChecksumZipFileName = $ChecksumMatch.Groups["filename"].Value
+if ($ChecksumZipFileName -cne $ExpectedZipFileName) {
+  throw "SHA256SUMS.txt names a different ZIP."
+}
+$ExpectedZipHash = $ChecksumMatch.Groups["hash"].Value
 $ActualZipHash = (Get-FileHash -LiteralPath $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$ExpectedZipFileName
 $ExpectedZipHash
 $ActualZipHash
 if ($ActualZipHash -ne $ExpectedZipHash) {
@@ -193,14 +206,18 @@ if ($ExifToolVersion -ne "13.59") {
 }
 ```
 
-Record: the exact ZIP filename, expected SHA-256, actual SHA-256, and comparison
-result. Only after the comparison succeeds, record `$AppFileVersion` and
+Record: the checksum line count, strict-format result, checksum filename,
+actual ZIP filename, expected SHA-256, actual SHA-256, and comparison result.
+Only after every gate succeeds, record `$AppFileVersion` and
 `$ExifToolVersion` in the required metadata table.
 
-Pass condition: the filename is the intended product ZIP and both 64-character
-SHA-256 values are identical; the extracted app has a nonempty file version;
-and the extracted ExifTool reports exactly `13.59`. A deterministic
-test-fixture ZIP hash is not a product artifact identity.
+Pass condition: `SHA256SUMS.txt` has exactly one line in the production format
+`<64 lowercase hex><two spaces><ZIP filename>`; that filename case-sensitively
+equals `Split-Path $ZipPath -Leaf`; both SHA-256 values are identical; the
+extracted app has a nonempty file version; and the extracted ExifTool reports
+exactly `13.59`. Format, line-count, filename, or hash mismatch must stop before
+any package executable runs. A deterministic test-fixture ZIP hash is not a
+product artifact identity.
 
 ### Headless self-test — after Step 2
 
@@ -350,19 +367,28 @@ and print the equality evidence:
 
 ```powershell
 $AfterOutputHashes = @{}
+$OutputHashMismatches = @()
 foreach ($OutputFile in $OutputFiles) {
   $AfterOutputHashes[$OutputFile.Name] =
     (Get-FileHash -LiteralPath $OutputFile.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-  [pscustomobject]@{
+  $HashEvidence = [pscustomobject]@{
     File = $OutputFile.Name
     Before = $BeforeOutputHashes[$OutputFile.Name]
     After = $AfterOutputHashes[$OutputFile.Name]
     Equal = ($AfterOutputHashes[$OutputFile.Name] -eq $BeforeOutputHashes[$OutputFile.Name])
   }
+  $HashEvidence
+  if (-not $HashEvidence.Equal) {
+    $OutputHashMismatches += $OutputFile.Name
+  }
+}
+if ($OutputHashMismatches.Count -ne 0) {
+  throw "Read-only verification changed output bytes: $($OutputHashMismatches -join ', ')"
 }
 ```
 
-Then independently inspect fields and raw XMP with the package ExifTool:
+Only after the aggregate mismatch gate passes, independently inspect fields and
+raw XMP with the package ExifTool:
 
 ```powershell
 & $ExifToolPath -G1 -s -XMP-dc:Subject -- $OutputFiles.FullName
@@ -377,9 +403,10 @@ status, `XMP-dc:Subject` values, raw-XMP evidence for formal Dublin Core/RDF
 namespaces and `dc:subject/rdf:Bag/rdf:li`, and any write-like side effect.
 
 Pass condition: all four output SHA-256 values are unchanged and every equality
-row is `True`; all four report verification success; the exact case-sensitive
-value `contains-synthetic-performer` is in the formal `rdf:Bag/rdf:li`; and the
-pre-existing subject remains.
+row is `True`; any nonempty mismatch aggregate throws before independent
+ExifTool inspection; all four report verification success; the exact
+case-sensitive value `contains-synthetic-performer` is in the formal
+`rdf:Bag/rdf:li`; and the pre-existing subject remains.
 
 ### Step 9 — Inspect CSV columns and ExifTool version
 
