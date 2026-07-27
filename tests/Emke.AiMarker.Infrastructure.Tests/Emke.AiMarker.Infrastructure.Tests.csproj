@@ -20,6 +20,18 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Emke.AiMarker.Infrastructure\Emke.AiMarker.Infrastructure.csproj" />
+    <ProjectReference Include="..\Emke.AiMarker.ProcessRunner.TestHelper\Emke.AiMarker.ProcessRunner.TestHelper.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
+
+  <Target Name="CopyProcessRunnerTestHelper" AfterTargets="Build">
+    <ItemGroup>
+      <_ProcessRunnerTestHelperFiles Include="$(MSBuildProjectDirectory)\..\Emke.AiMarker.ProcessRunner.TestHelper\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ProcessRunnerTestHelperFiles)"
+          DestinationFiles="@(_ProcessRunnerTestHelperFiles->'$(OutDir)ProcessRunnerTestHelper\%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true"
+          UseHardlinksIfPossible="true" />
+  </Target>
 
 </Project>
