@@ -32,9 +32,12 @@ public sealed class MediaProcessorTests
         Assert.Equal("已确认 rdf:Bag/rdf:li", result.Evidence.XmpStructure);
         int verificationIndex =
             operationLog.FindLastIndex(call => call.StartsWith("xmp:"));
+        int sealedIndex = operationLog.IndexOf("verified");
         int commitIndex = operationLog.IndexOf("commit");
         Assert.True(verificationIndex >= 0);
-        Assert.True(commitIndex > verificationIndex);
+        Assert.True(sealedIndex > verificationIndex);
+        Assert.True(commitIndex > sealedIndex);
+        Assert.True(files.SealVerifiedCalled);
         Assert.Contains($"write:{plan.TempPath}", exif.Calls);
         Assert.DoesNotContain($"write:{plan.SourcePath}", exif.Calls);
     }
@@ -98,6 +101,7 @@ public sealed class MediaProcessorTests
 
         Assert.Equal(ProcessStatus.AlreadyCompliant, result.Status);
         Assert.Equal(0, exif.WriteCount);
+        Assert.True(files.SealVerifiedCalled);
         Assert.True(files.CommitCalled);
         Assert.Equal(plan.FinalPath, result.OutputPath);
     }
@@ -147,6 +151,76 @@ public sealed class MediaProcessorTests
         Assert.Equal(
             """["existing","another","contains-synthetic-performer"]""",
             result.Evidence.ActualValue);
+    }
+
+    [Fact]
+    public async Task Copy_mode_rolls_back_when_a_duplicate_existing_subject_is_lost()
+    {
+        var files = new FakeFileTransaction([1, 2, 3]);
+        var exif = new FakeExifToolClient(
+            beforeSubjects: ["existing", "duplicate", "duplicate"],
+            afterSubjects: ["existing", "duplicate", MarkerContract.Marker],
+            rawXmp: TestXmp.ValidBag(
+                "existing",
+                "duplicate",
+                MarkerContract.Marker));
+        var processor = CreateProcessor(files, exif);
+
+        ProcessResult result = await processor.ProcessAsync(
+            TestPlans.Copy("商品.jpg"),
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProcessStatus.Failed, result.Status);
+        Assert.Contains("Subject", result.Error);
+        Assert.True(files.RollbackCalled);
+        Assert.False(files.SealVerifiedCalled);
+        Assert.False(files.CommitCalled);
+    }
+
+    [Fact]
+    public async Task Original_mode_fails_when_subject_preservation_changes_case()
+    {
+        var files = new FakeFileTransaction([1, 2, 3]);
+        var exif = new FakeExifToolClient(
+            beforeSubjects: ["KeepCase"],
+            afterSubjects: ["keepcase", MarkerContract.Marker],
+            rawXmp: TestXmp.ValidBag("keepcase", MarkerContract.Marker));
+        var safety = new FakeOriginalWriteSafety();
+        var processor = CreateProcessor(files, exif, safety);
+
+        ProcessResult result = await processor.ProcessAsync(
+            TestPlans.Copy("商品.jpg"),
+            RunMode.MarkOriginals,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProcessStatus.Failed, result.Status);
+        Assert.Contains("Subject", result.Error);
+        Assert.True(safety.ValidateCalled);
+        Assert.Equal(1, exif.WriteCount);
+        Assert.False(files.CommitCalled);
+    }
+
+    [Fact]
+    public async Task Prewrite_subject_snapshot_survives_a_client_reusing_its_list()
+    {
+        var files = new FakeFileTransaction([1, 2, 3]);
+        var exif = new FakeExifToolClient(
+            beforeSubjects: ["existing"],
+            afterSubjects: [MarkerContract.Marker],
+            rawXmp: TestXmp.ValidBag(MarkerContract.Marker),
+            mutateSubjectsInPlace: true);
+        var processor = CreateProcessor(files, exif);
+
+        ProcessResult result = await processor.ProcessAsync(
+            TestPlans.Copy("商品.jpg"),
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ProcessStatus.Failed, result.Status);
+        Assert.Contains("Subject", result.Error);
+        Assert.True(files.RollbackCalled);
+        Assert.False(files.CommitCalled);
     }
 
     [Fact]

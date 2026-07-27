@@ -27,6 +27,8 @@ internal sealed class FakeFileTransaction(
 
     public bool RollbackCalled { get; private set; }
 
+    public bool SealVerifiedCalled { get; private set; }
+
     public bool ThrowOnCommit { get; init; }
 
     public List<string> Calls { get; } = [];
@@ -65,6 +67,17 @@ internal sealed class FakeFileTransaction(
         return Task.CompletedTask;
     }
 
+    public Task SealVerifiedAsync(
+        PreparedMedia media,
+        CancellationToken cancellationToken)
+    {
+        SealVerifiedCalled = true;
+        Calls.Add("verified");
+        operationLog?.Add("verified");
+        CancellationTokens.Add(cancellationToken);
+        return Task.CompletedTask;
+    }
+
     public Task RollbackAsync(PreparedMedia media)
     {
         RollbackCalled = true;
@@ -79,9 +92,12 @@ internal sealed class FakeExifToolClient(
     IReadOnlyList<string>? afterSubjects = null,
     ReadOnlyMemory<byte> rawXmp = default,
     ExifFailurePoint failurePoint = ExifFailurePoint.None,
-    List<string>? operationLog = null) : IExifToolClient
+    List<string>? operationLog = null,
+    bool mutateSubjectsInPlace = false) : IExifToolClient
 {
     private bool _writeAttempted;
+    private readonly List<string>? _sharedSubjects =
+        mutateSubjectsInPlace ? (beforeSubjects ?? []).ToList() : null;
 
     public IReadOnlyList<string> BeforeSubjects { get; } = beforeSubjects ?? [];
 
@@ -121,8 +137,9 @@ internal sealed class FakeExifToolClient(
             throw new IOException("read after write failed");
         }
 
-        return Task.FromResult(
-            _writeAttempted ? AfterSubjects : BeforeSubjects);
+        return Task.FromResult<IReadOnlyList<string>>(
+            _sharedSubjects
+            ?? (_writeAttempted ? AfterSubjects : BeforeSubjects));
     }
 
     public Task WriteMarkerAsync(string path, CancellationToken cancellationToken)
@@ -130,6 +147,12 @@ internal sealed class FakeExifToolClient(
         _writeAttempted = true;
         WriteCount++;
         Record($"write:{path}", cancellationToken);
+        if (_sharedSubjects is not null)
+        {
+            _sharedSubjects.Clear();
+            _sharedSubjects.AddRange(AfterSubjects);
+        }
+
         if (failurePoint == ExifFailurePoint.Write)
         {
             throw new IOException("write failed");

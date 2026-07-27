@@ -66,6 +66,9 @@ public sealed class PhysicalCopyTransactionTests
             plan.TempPath,
             [4, 5, 6],
             TestContext.Current.CancellationToken);
+        await transaction.SealVerifiedAsync(
+            media,
+            TestContext.Current.CancellationToken);
 
         await transaction.CommitAsync(media, TestContext.Current.CancellationToken);
 
@@ -91,6 +94,9 @@ public sealed class PhysicalCopyTransactionTests
         PreparedMedia media = await transaction.PrepareAsync(
             plan,
             RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+        await transaction.SealVerifiedAsync(
+            media,
             TestContext.Current.CancellationToken);
         await File.WriteAllBytesAsync(
             plan.FinalPath,
@@ -213,9 +219,9 @@ public sealed class PhysicalCopyTransactionTests
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
-        var transaction = new PhysicalCopyTransaction((_, destination) =>
+        var transaction = new PhysicalCopyTransaction((_, ownedDestination) =>
         {
-            File.WriteAllBytes(destination, [4, 5]);
+            ownedDestination.Write([4, 5]);
             throw new IOException("simulated partial copy");
         });
 
@@ -233,6 +239,113 @@ public sealed class PhysicalCopyTransactionTests
             await File.ReadAllBytesAsync(
                 plan.SourcePath,
                 TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Foreign_file_winning_create_race_is_preserved()
+    {
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction(
+            copyToOwnedStream: (_, _) => throw new InvalidOperationException(
+                "copy must not start after reservation loss"),
+            beforeReserve: destination => File.WriteAllBytes(
+                destination,
+                [9, 8, 7]));
+
+        await Assert.ThrowsAsync<IOException>(
+            () => transaction.PrepareAsync(
+                plan,
+                RunMode.MarkCopies,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(plan.FinalPath));
+    }
+
+    [Fact]
+    public async Task Commit_refuses_a_foreign_file_substituted_after_preparation()
+    {
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction();
+        PreparedMedia media = await transaction.PrepareAsync(
+            plan,
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+        await transaction.SealVerifiedAsync(
+            media,
+            TestContext.Current.CancellationToken);
+        File.Delete(plan.TempPath);
+        await File.WriteAllBytesAsync(
+            plan.TempPath,
+            [9, 8, 7],
+            TestContext.Current.CancellationToken);
+
+        IOException exception = await Assert.ThrowsAsync<IOException>(
+            () => transaction.CommitAsync(
+                media,
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("所有权", exception.Message);
+        Assert.False(File.Exists(plan.FinalPath));
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Commit_refuses_owned_temp_without_strict_verification_seal()
+    {
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction();
+        PreparedMedia media = await transaction.PrepareAsync(
+            plan,
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+
+        IOException exception = await Assert.ThrowsAsync<IOException>(
+            () => transaction.CommitAsync(
+                media,
+                TestContext.Current.CancellationToken));
+
+        Assert.Contains("验证", exception.Message);
+        Assert.False(File.Exists(plan.FinalPath));
+        Assert.True(File.Exists(plan.TempPath));
+    }
+
+    [Fact]
+    public async Task Rollback_preserves_a_foreign_file_substituted_after_preparation()
+    {
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction();
+        PreparedMedia media = await transaction.PrepareAsync(
+            plan,
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+        File.Delete(plan.TempPath);
+        await File.WriteAllBytesAsync(
+            plan.TempPath,
+            [9, 8, 7],
+            TestContext.Current.CancellationToken);
+
+        await transaction.RollbackAsync(media);
+
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
+        Assert.True(File.Exists(plan.SourcePath));
+        Assert.False(File.Exists(plan.FinalPath));
     }
 
     [Fact]

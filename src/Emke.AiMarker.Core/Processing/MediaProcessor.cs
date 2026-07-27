@@ -74,6 +74,9 @@ public sealed class MediaProcessor(
 
                 if (mode == RunMode.MarkCopies)
                 {
+                    await files.SealVerifiedAsync(
+                        media,
+                        CancellationToken.None);
                     await files.CommitAsync(media, CancellationToken.None);
                 }
 
@@ -90,6 +93,7 @@ public sealed class MediaProcessor(
                 originalWriteSafety.Validate(plan);
             }
 
+            IReadOnlyList<string> beforeWriteSubjects = subjects.ToArray();
             await exifTool.WriteMarkerAsync(
                 media.WorkingPath,
                 CancellationToken.None);
@@ -104,6 +108,20 @@ public sealed class MediaProcessor(
                 rawXmp,
                 exifToolVersion,
                 timeProvider.GetUtcNow());
+            if (afterWrite.Result == VerificationResult.Passed
+                && !PreservesSubjects(
+                    beforeWrite: beforeWriteSubjects,
+                    afterWrite: subjects))
+            {
+                const string preservationError =
+                    "写入后 Subject 未完整保留写入前值（区分大小写并保留重复次数）。";
+                afterWrite = afterWrite with
+                {
+                    Result = VerificationResult.Failed,
+                    XmpStructure = "Subject 保留检查失败",
+                    Error = preservationError,
+                };
+            }
 
             if (afterWrite.Result != VerificationResult.Passed)
             {
@@ -117,6 +135,9 @@ public sealed class MediaProcessor(
 
             if (mode == RunMode.MarkCopies)
             {
+                await files.SealVerifiedAsync(
+                    media,
+                    CancellationToken.None);
                 await files.CommitAsync(media, CancellationToken.None);
             }
 
@@ -278,6 +299,29 @@ public sealed class MediaProcessor(
 
     private static string OutputPath(OutputPlanItem plan, RunMode mode) =>
         mode == RunMode.MarkCopies ? plan.FinalPath : plan.SourcePath;
+
+    private static bool PreservesSubjects(
+        IReadOnlyList<string> beforeWrite,
+        IReadOnlyList<string> afterWrite)
+    {
+        var remaining = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (string subject in afterWrite)
+        {
+            remaining[subject] = remaining.GetValueOrDefault(subject) + 1;
+        }
+
+        foreach (string subject in beforeWrite)
+        {
+            if (!remaining.TryGetValue(subject, out int count) || count == 0)
+            {
+                return false;
+            }
+
+            remaining[subject] = count - 1;
+        }
+
+        return true;
+    }
 
     private static string StrictVerificationError(VerificationEvidence evidence) =>
         string.IsNullOrWhiteSpace(evidence.Error)

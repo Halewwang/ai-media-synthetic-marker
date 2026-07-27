@@ -5,18 +5,24 @@ namespace Emke.AiMarker.Infrastructure.Files;
 
 public sealed class PhysicalCopyTransaction : IFileTransaction
 {
-    private readonly Action<string, string> _copyFile;
+    private readonly object _ownershipGate = new();
+    private readonly Dictionary<string, OwnedTempFile> _ownedTemps =
+        new(StringComparer.Ordinal);
+    private readonly Action<string, Stream> _copyToOwnedStream;
+    private readonly Action<string>? _beforeReserve;
 
     public PhysicalCopyTransaction()
-        : this((source, destination) =>
-            File.Copy(source, destination, overwrite: false))
+        : this(CopySourceToOwnedStream)
     {
     }
 
-    public PhysicalCopyTransaction(Action<string, string> copyFile)
+    public PhysicalCopyTransaction(
+        Action<string, Stream> copyToOwnedStream,
+        Action<string>? beforeReserve = null)
     {
-        ArgumentNullException.ThrowIfNull(copyFile);
-        _copyFile = copyFile;
+        ArgumentNullException.ThrowIfNull(copyToOwnedStream);
+        _copyToOwnedStream = copyToOwnedStream;
+        _beforeReserve = beforeReserve;
     }
 
     public Task<PreparedMedia> PrepareAsync(
@@ -50,30 +56,41 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
         string destinationDirectory = Path.GetDirectoryName(plan.FinalPath)
             ?? throw new IOException("输出路径缺少目标目录。");
         Directory.CreateDirectory(destinationDirectory);
-        if (File.Exists(plan.TempPath))
+        _beforeReserve?.Invoke(plan.TempPath);
+
+        OwnedTempFile owned;
+        try
+        {
+            owned = OwnedTempFile.Reserve(plan.TempPath, plan.FinalPath);
+        }
+        catch (IOException exception)
         {
             throw new IOException(
-                $"计划临时文件已存在，未覆盖该文件：{plan.TempPath}");
+                $"无法原子预留计划临时文件，未覆盖或删除现有路径：{plan.TempPath}",
+                exception);
         }
 
         try
         {
-            _copyFile(plan.SourcePath, plan.TempPath);
+            _copyToOwnedStream(plan.SourcePath, owned.Destination);
+            owned.CompleteCopy();
+            lock (_ownershipGate)
+            {
+                _ownedTemps.Add(owned.Token, owned);
+            }
         }
         catch
         {
-            if (File.Exists(plan.TempPath))
-            {
-                File.Delete(plan.TempPath);
-            }
-
+            owned.DeleteIfStillOwned();
+            owned.Dispose();
             throw;
         }
 
         return Task.FromResult(new PreparedMedia(
             plan.SourcePath,
             plan.TempPath,
-            plan.FinalPath));
+            plan.FinalPath,
+            owned.Token));
     }
 
     public Task CommitAsync(
@@ -87,13 +104,48 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
             media.SourcePath,
             media.FinalPath);
 
-        if (File.Exists(media.FinalPath))
+        lock (_ownershipGate)
         {
-            throw new IOException(
-                $"目标冲突：输出文件已存在，未覆盖该文件：{media.FinalPath}");
+            OwnedTempFile owned = GetProvenOwnership(media);
+            if (!owned.StillOwnsVerifiedPath())
+            {
+                _ownedTemps.Remove(media.OwnershipToken);
+                owned.Dispose();
+                throw new IOException(
+                    "临时文件缺少严格验证封存或所有权无法证明，可能已被替换；已拒绝提交。");
+            }
+
+            if (File.Exists(media.FinalPath))
+            {
+                throw new IOException(
+                    $"目标冲突：输出文件已存在，未覆盖该文件：{media.FinalPath}");
+            }
+
+            File.Move(media.WorkingPath, media.FinalPath, overwrite: false);
+            _ownedTemps.Remove(media.OwnershipToken);
+            owned.Dispose();
         }
 
-        File.Move(media.WorkingPath, media.FinalPath, overwrite: false);
+        return Task.CompletedTask;
+    }
+
+    public Task SealVerifiedAsync(
+        PreparedMedia media,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(media);
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureOwnedCopyPath(
+            media.WorkingPath,
+            media.SourcePath,
+            media.FinalPath);
+
+        lock (_ownershipGate)
+        {
+            OwnedTempFile owned = GetProvenOwnership(media);
+            owned.SealVerifiedPath();
+        }
+
         return Task.CompletedTask;
     }
 
@@ -101,15 +153,44 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
     {
         ArgumentNullException.ThrowIfNull(media);
 
-        if (!OwnedTempFile.IsSamePath(media.WorkingPath, media.SourcePath)
-            && !OwnedTempFile.IsSamePath(media.WorkingPath, media.FinalPath)
-            && OwnedTempFile.IsOwned(media.WorkingPath, media.FinalPath)
-            && File.Exists(media.WorkingPath))
+        lock (_ownershipGate)
         {
-            File.Delete(media.WorkingPath);
+            if (!_ownedTemps.TryGetValue(
+                    media.OwnershipToken,
+                    out OwnedTempFile? owned)
+                || !owned.Matches(
+                    media.SourcePath,
+                    media.WorkingPath,
+                    media.FinalPath,
+                    media.OwnershipToken))
+            {
+                return Task.CompletedTask;
+            }
+
+            _ownedTemps.Remove(media.OwnershipToken);
+            owned.DeleteIfStillOwned();
+            owned.Dispose();
         }
 
         return Task.CompletedTask;
+    }
+
+    private OwnedTempFile GetProvenOwnership(PreparedMedia media)
+    {
+        if (!_ownedTemps.TryGetValue(
+                media.OwnershipToken,
+                out OwnedTempFile? owned)
+            || !owned.Matches(
+                media.SourcePath,
+                media.WorkingPath,
+                media.FinalPath,
+                media.OwnershipToken))
+        {
+            throw new IOException(
+                "临时文件缺少当前事务的所有权证明，已拒绝提交。");
+        }
+
+        return owned;
     }
 
     private static void EnsureOwnedCopyPath(
@@ -117,12 +198,24 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
         string sourcePath,
         string finalPath)
     {
-        if (!OwnedTempFile.IsOwned(workingPath, finalPath)
+        if (!OwnedTempFile.HasOwnedPathShape(workingPath, finalPath)
             || OwnedTempFile.IsSamePath(workingPath, sourcePath)
             || OwnedTempFile.IsSamePath(workingPath, finalPath))
         {
             throw new IOException(
                 "临时文件不属于计划目标目录，已拒绝复制事务。");
         }
+    }
+
+    private static void CopySourceToOwnedStream(
+        string sourcePath,
+        Stream destination)
+    {
+        using var source = new FileStream(
+            sourcePath,
+            FileMode.Open,
+            FileAccess.Read,
+            FileShare.Read);
+        source.CopyTo(destination);
     }
 }
