@@ -136,12 +136,16 @@ internal sealed class ControllableBatchProcessor : IBatchProcessor
 
     public Exception? Exception { get; set; }
 
-    public RunSummary? NextSummary { get; set; }
+    public bool LogWritten { get; set; } = true;
 
     public void BlockUntilReleased() =>
         release = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public void Release(RunSummary summary) => release!.TrySetResult(summary);
+    public void ReleaseSuccess() => release!.TrySetResult(
+        TestSummaries.Success(ReceivedPlans, ReceivedMode!.Value, LogWritten));
+
+    public void ReleaseStopped() => release!.TrySetResult(
+        TestSummaries.Stopped(ReceivedPlans, ReceivedMode!.Value, LogWritten));
 
     public async Task<RunSummary> RunAsync(
         IReadOnlyList<OutputPlanItem> plans,
@@ -166,22 +170,48 @@ internal sealed class ControllableBatchProcessor : IBatchProcessor
             1,
             plans.Count,
             plans[0].RelativePath,
-            new Dictionary<ProcessStatus, int> { [ProcessStatus.Added] = 1 }));
+            new Dictionary<ProcessStatus, int> { [TestSummaries.SuccessStatus(mode)] = 1 }));
 
         RunSummary summary = release is null
-            ? NextSummary ?? TestSummaries.Success(mode)
+            ? TestSummaries.Success(plans, mode, LogWritten)
             : await release.Task;
+        progress?.Report(new RunProgress(
+            summary.Results.Count,
+            plans.Count,
+            summary.Results[^1].RelativePath,
+            summary.Results
+                .GroupBy(result => result.Status)
+                .ToDictionary(group => group.Key, group => group.Count())));
         return summary;
     }
 }
 
 internal sealed class FakeFileSelectionService : IFileSelectionService
 {
+    private TaskCompletionSource<IReadOnlyList<string>>? filesRelease;
+    private TaskCompletionSource? filesRequested;
+
     public IReadOnlyList<string> Files { get; set; } = [];
 
     public IReadOnlyList<string> Folders { get; set; } = [];
 
-    public Task<IReadOnlyList<string>> SelectFilesAsync() => Task.FromResult(Files);
+    public Task FilesRequested =>
+        filesRequested?.Task ?? throw new InvalidOperationException("File selection is not blocked.");
+
+    public void BlockFilesUntilReleased()
+    {
+        filesRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        filesRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    public void ReleaseFiles(IReadOnlyList<string> files) =>
+        filesRelease!.TrySetResult(files);
+
+    public Task<IReadOnlyList<string>> SelectFilesAsync()
+    {
+        filesRequested?.TrySetResult();
+        return filesRelease?.Task ?? Task.FromResult(Files);
+    }
 
     public Task<IReadOnlyList<string>> SelectFoldersAsync() => Task.FromResult(Folders);
 }
@@ -225,28 +255,69 @@ internal sealed class RecordingShellService : IShellService
 internal static class TestSummaries
 {
     public static RunSummary Success(
-        RunMode mode = RunMode.MarkCopies,
-        bool logWritten = true,
-        bool stopped = false)
-    {
-        var evidence = new VerificationEvidence(
-            VerificationResult.Passed,
-            "[\"contains-synthetic-performer\"]",
-            "dc:subject/rdf:Bag/rdf:li",
-            new DateTimeOffset(2026, 7, 27, 0, 0, 0, TimeSpan.Zero),
-            "13.59");
-        ProcessResult result = new(
-            "a.jpg",
-            "JPG",
-            ProcessStatus.Added,
+        IReadOnlyList<OutputPlanItem> plans,
+        RunMode mode,
+        bool logWritten = true) =>
+        new(
             mode,
-            evidence,
-            mode == RunMode.MarkCopies ? @"D:\EMKE 已标记\商品\a.jpg" : "");
-        return new(
-            mode,
-            [result],
+            plans.Select(plan => Result(plan, mode, SuccessStatus(mode))).ToArray(),
             logWritten ? @"D:\运行记录\run.csv" : "",
             logWritten,
-            stopped);
+            Stopped: false);
+
+    public static RunSummary Stopped(
+        IReadOnlyList<OutputPlanItem> plans,
+        RunMode mode,
+        bool logWritten = true) =>
+        new(
+            mode,
+            plans.Select((plan, index) => Result(
+                plan,
+                mode,
+                index == 0
+                    ? SuccessStatus(mode)
+                    : ProcessStatus.StoppedBeforeProcessing)).ToArray(),
+            logWritten ? @"D:\运行记录\run.csv" : "",
+            logWritten,
+            Stopped: true);
+
+    private static ProcessResult Result(
+        OutputPlanItem plan,
+        RunMode mode,
+        ProcessStatus status)
+    {
+        var evidence = new VerificationEvidence(
+            status == ProcessStatus.StoppedBeforeProcessing
+                ? VerificationResult.NotRun
+                : VerificationResult.Passed,
+            status == ProcessStatus.StoppedBeforeProcessing
+                ? "（未读取）"
+                : "[\"contains-synthetic-performer\"]",
+            status == ProcessStatus.StoppedBeforeProcessing
+                ? "未验证"
+                : "dc:subject/rdf:Bag/rdf:li",
+            new DateTimeOffset(2026, 7, 27, 0, 0, 0, TimeSpan.Zero),
+            status == ProcessStatus.StoppedBeforeProcessing ? "" : "13.59",
+            status == ProcessStatus.StoppedBeforeProcessing
+                ? "用户停止前未处理"
+                : "");
+        return new(
+            plan.RelativePath,
+            Path.GetExtension(plan.SourcePath).TrimStart('.').ToUpperInvariant(),
+            status,
+            mode,
+            evidence,
+            status != ProcessStatus.StoppedBeforeProcessing
+                && mode == RunMode.MarkCopies
+                    ? plan.FinalPath
+                    : "",
+            status == ProcessStatus.StoppedBeforeProcessing
+                ? "用户停止前未处理"
+                : "");
     }
+
+    public static ProcessStatus SuccessStatus(RunMode mode) =>
+        mode == RunMode.VerifyOnly
+            ? ProcessStatus.AlreadyCompliant
+            : ProcessStatus.Added;
 }

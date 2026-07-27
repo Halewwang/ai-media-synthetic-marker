@@ -29,6 +29,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private IReadOnlyList<DiscoveredMedia> mediaItems = [];
     private IReadOnlyList<ProcessResult> results = [];
     private IReadOnlyList<ScanIssue> scanIssues = [];
+    private IReadOnlyList<string> outputDirectories = [];
+    private int skippedUnsupportedCount;
     private string currentRelativePath = "";
     private int completedCount;
     private int totalCount;
@@ -39,6 +41,8 @@ public sealed class MainWindowViewModel : ObservableObject
     private StopController? activeStop;
     private bool stopRequested;
     private RunMode? completedMode;
+    private int operationActive;
+    private long workspaceRevision;
 
     public MainWindowViewModel(
         InputScanner scanner,
@@ -74,7 +78,9 @@ public sealed class MainWindowViewModel : ObservableObject
             CanStart,
             HandleExceptionAsync);
         VerifyOnlyCommand = new(
-            () => RunAsync(RunMode.VerifyOnly),
+            () => ExecuteExclusiveAsync(
+                _ => RunCoreAsync(RunMode.VerifyOnly),
+                CanStartState),
             CanStart,
             HandleExceptionAsync);
         SafeStopCommand = new(
@@ -89,7 +95,7 @@ public sealed class MainWindowViewModel : ObservableObject
             OpenOutputAsync,
             () => State == WorkspaceState.Completed
                 && completedMode == RunMode.MarkCopies
-                && !string.IsNullOrWhiteSpace(OutputPath),
+                && outputDirectories.Count > 0,
             HandleExceptionAsync);
         OpenLogCommand = new(
             OpenLogAsync,
@@ -124,7 +130,7 @@ public sealed class MainWindowViewModel : ObservableObject
 
     public int ProcessableCount => MediaItems.Count;
 
-    public int SkippedCount => ScanIssues.Count;
+    public int SkippedCount => ScanIssues.Count + skippedUnsupportedCount;
 
     public string CurrentRelativePath
     {
@@ -252,11 +258,23 @@ public sealed class MainWindowViewModel : ObservableObject
     public Task AddPathsAsync(IReadOnlyList<string> paths)
     {
         ArgumentNullException.ThrowIfNull(paths);
-        if (!CanChangeInputs())
-        {
-            return Task.CompletedTask;
-        }
+        return ExecuteExclusiveAsync(
+            _ =>
+            {
+                ApplyPaths(paths);
+                return Task.CompletedTask;
+            },
+            CanChangeInputsState);
+    }
 
+    public Task StartMarkAsync() =>
+        ExecuteExclusiveAsync(
+            _ => RunCoreAsync(
+                IsOverwriteOriginals ? RunMode.MarkOriginals : RunMode.MarkCopies),
+            CanStartState);
+
+    private void ApplyPaths(IReadOnlyList<string> paths)
+    {
         foreach (string path in paths.Where(path => !string.IsNullOrWhiteSpace(path)))
         {
             if (!selectedPaths.Contains(path, StringComparer.OrdinalIgnoreCase))
@@ -268,13 +286,21 @@ public sealed class MainWindowViewModel : ObservableObject
         ScanResult scan = scanner.Scan(selectedPaths);
         MediaItems = scan.Media;
         ScanIssues = scan.Issues;
+        SetSkippedUnsupportedCount(scan.SkippedUnsupportedCount);
         Results = [];
         completedMode = null;
         LogPath = "";
         CurrentRelativePath = "";
         CompletedCount = 0;
         TotalCount = 0;
-        OutputPath = GetOutputPath(MediaItems);
+        outputDirectories = GetOutputDirectories(MediaItems);
+        OutputPath = outputDirectories.Count switch
+        {
+            0 => "",
+            1 => outputDirectories[0],
+            _ => $"多个输出位置（{outputDirectories.Count}）",
+        };
+        Interlocked.Increment(ref workspaceRevision);
 
         if (MediaItems.Count == 0)
         {
@@ -288,19 +314,15 @@ public sealed class MainWindowViewModel : ObservableObject
             State = WorkspaceState.Ready;
             SummaryMessage =
                 $"已选择 {ProcessableCount} 个可处理媒体，共 {FormatBytes(TotalBytes)}；"
-                + $"{SkippedCount} 个路径存在问题。";
+                + $"{SkippedCount} 个项目已跳过或存在问题。";
         }
 
         NotifyCommands();
-        return Task.CompletedTask;
     }
 
-    public Task StartMarkAsync() =>
-        RunAsync(IsOverwriteOriginals ? RunMode.MarkOriginals : RunMode.MarkCopies);
-
-    private async Task RunAsync(RunMode mode)
+    private async Task RunCoreAsync(RunMode mode)
     {
-        if (!CanStart())
+        if (!CanStartState())
         {
             return;
         }
@@ -328,6 +350,7 @@ public sealed class MainWindowViewModel : ObservableObject
         TotalCount = plans.Count;
         stopRequested = false;
         activeStop = new StopController();
+        Interlocked.Increment(ref workspaceRevision);
         State = WorkspaceState.Running;
         SummaryMessage = $"正在处理 0/{TotalCount}。";
 
@@ -369,11 +392,31 @@ public sealed class MainWindowViewModel : ObservableObject
         SummaryMessage = $"正在处理 {CompletedCount}/{TotalCount}。";
     }
 
-    private async Task AddSelectedFilesAsync() =>
-        await AddPathsAsync(await fileSelection.SelectFilesAsync());
+    private Task AddSelectedFilesAsync() =>
+        ExecuteExclusiveAsync(
+            async revision =>
+            {
+                IReadOnlyList<string> paths = await fileSelection.SelectFilesAsync();
+                if (revision == Volatile.Read(ref workspaceRevision)
+                    && CanChangeInputsState())
+                {
+                    ApplyPaths(paths);
+                }
+            },
+            CanChangeInputsState);
 
-    private async Task AddSelectedFoldersAsync() =>
-        await AddPathsAsync(await fileSelection.SelectFoldersAsync());
+    private Task AddSelectedFoldersAsync() =>
+        ExecuteExclusiveAsync(
+            async revision =>
+            {
+                IReadOnlyList<string> paths = await fileSelection.SelectFoldersAsync();
+                if (revision == Volatile.Read(ref workspaceRevision)
+                    && CanChangeInputsState())
+                {
+                    ApplyPaths(paths);
+                }
+            },
+            CanChangeInputsState);
 
     private Task RequestSafeStopAsync()
     {
@@ -395,6 +438,8 @@ public sealed class MainWindowViewModel : ObservableObject
         MediaItems = [];
         Results = [];
         ScanIssues = [];
+        SetSkippedUnsupportedCount(0);
+        outputDirectories = [];
         completedMode = null;
         LogPath = "";
         OutputPath = "";
@@ -404,12 +449,19 @@ public sealed class MainWindowViewModel : ObservableObject
         IsDetailsExpanded = false;
         IsOverwriteOriginals = false;
         SummaryMessage = "请选择需要处理的媒体文件或文件夹。";
+        Interlocked.Increment(ref workspaceRevision);
         State = WorkspaceState.Empty;
         NotifyCommands();
         return Task.CompletedTask;
     }
 
-    private Task OpenOutputAsync() => shell.OpenPathAsync(OutputPath);
+    private async Task OpenOutputAsync()
+    {
+        foreach (string directory in outputDirectories)
+        {
+            await shell.OpenPathAsync(directory);
+        }
+    }
 
     private Task OpenLogAsync() => shell.OpenPathAsync(LogPath);
 
@@ -429,10 +481,52 @@ public sealed class MainWindowViewModel : ObservableObject
     }
 
     private bool CanChangeInputs() =>
-        State is WorkspaceState.Empty or WorkspaceState.Ready;
+        !IsOperationActive && CanChangeInputsState();
 
     private bool CanStart() =>
+        !IsOperationActive && CanStartState();
+
+    private bool CanChangeInputsState() =>
+        State is WorkspaceState.Empty or WorkspaceState.Ready;
+
+    private bool CanStartState() =>
         State == WorkspaceState.Ready && MediaItems.Count > 0;
+
+    private bool IsOperationActive => Volatile.Read(ref operationActive) == 1;
+
+    private async Task ExecuteExclusiveAsync(
+        Func<long, Task> operation,
+        Func<bool> canBegin)
+    {
+        if (!canBegin()
+            || Interlocked.CompareExchange(ref operationActive, 1, 0) != 0)
+        {
+            return;
+        }
+
+        long revision = Volatile.Read(ref workspaceRevision);
+        NotifyCommands();
+        try
+        {
+            await operation(revision);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref operationActive, 0);
+            NotifyCommands();
+        }
+    }
+
+    private void SetSkippedUnsupportedCount(int value)
+    {
+        if (skippedUnsupportedCount == value)
+        {
+            return;
+        }
+
+        skippedUnsupportedCount = value;
+        OnPropertyChanged(nameof(SkippedCount));
+    }
 
     private void NotifyCommands()
     {
@@ -466,24 +560,35 @@ public sealed class MainWindowViewModel : ObservableObject
         return message;
     }
 
-    private static string GetOutputPath(IReadOnlyList<DiscoveredMedia> media)
+    private static IReadOnlyList<string> GetOutputDirectories(
+        IReadOnlyList<DiscoveredMedia> media)
     {
         if (media.Count == 0)
         {
-            return "";
+            return [];
         }
 
-        DiscoveredMedia first = media[0];
-        OutputPlanItem plan = OutputPlanner.Plan([first], null)[0];
+        IReadOnlyList<OutputPlanItem> plans = OutputPlanner.Plan(media, null);
+        return media
+            .Zip(plans, GetOutputDirectory)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string GetOutputDirectory(
+        DiscoveredMedia media,
+        OutputPlanItem plan)
+    {
         bool folderInput = !string.Equals(
-            first.SourcePath,
-            first.TopLevelInput,
+            media.SourcePath,
+            media.TopLevelInput,
             StringComparison.OrdinalIgnoreCase);
         if (folderInput && plan.FinalPath.EndsWith(
-            first.RelativePath,
+            media.RelativePath,
             StringComparison.OrdinalIgnoreCase))
         {
-            return plan.FinalPath[..^first.RelativePath.Length].TrimEnd('\\', '/');
+            return plan.FinalPath[..^media.RelativePath.Length].TrimEnd('\\', '/');
         }
 
         return GetDirectoryName(plan.FinalPath);

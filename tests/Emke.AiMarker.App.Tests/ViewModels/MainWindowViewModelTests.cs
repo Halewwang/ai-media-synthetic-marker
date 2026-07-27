@@ -33,7 +33,7 @@ public sealed class MainWindowViewModelTests
         Assert.Equal(WorkspaceState.Ready, harness.ViewModel.State);
         Assert.Equal(2, harness.ViewModel.MediaCount);
         Assert.Equal(2, harness.ViewModel.ProcessableCount);
-        Assert.Equal(1, harness.ViewModel.SkippedCount);
+        Assert.Equal(2, harness.ViewModel.SkippedCount);
         Assert.Equal(30, harness.ViewModel.TotalBytes);
         Assert.Equal(["a.jpg", "b.MP4"], harness.ViewModel.MediaItems.Select(item => item.RelativePath));
         Assert.Single(harness.ViewModel.ScanIssues);
@@ -67,16 +67,16 @@ public sealed class MainWindowViewModelTests
         Assert.False(harness.ViewModel.StartMarkCommand.CanExecute(null));
         Assert.True(harness.ViewModel.SafeStopCommand.CanExecute(null));
 
-        harness.Batch.Release(TestSummaries.Success());
+        harness.Batch.ReleaseSuccess();
         await run;
 
         Assert.Equal(WorkspaceState.Completed, harness.ViewModel.State);
         Assert.False(harness.ViewModel.SafeStopCommand.CanExecute(null));
         Assert.True(harness.ViewModel.OpenOutputCommand.CanExecute(null));
         Assert.True(harness.ViewModel.OpenLogCommand.CanExecute(null));
-        Assert.Equal(1, harness.ViewModel.CompletedCount);
+        Assert.Equal(2, harness.ViewModel.CompletedCount);
         Assert.Equal(2, harness.ViewModel.TotalCount);
-        Assert.Equal(50, harness.ViewModel.ProgressPercent);
+        Assert.Equal(100, harness.ViewModel.ProgressPercent);
     }
 
     [Fact]
@@ -90,8 +90,13 @@ public sealed class MainWindowViewModelTests
 
         Assert.True(harness.Batch.ReceivedStop!.IsStopRequested);
         Assert.Contains("停止", harness.ViewModel.SummaryMessage, StringComparison.Ordinal);
-        harness.Batch.Release(TestSummaries.Success(stopped: true));
+        harness.Batch.ReleaseStopped();
         await run;
+
+        Assert.Contains(
+            harness.ViewModel.Results,
+            result => result.Status == ProcessStatus.StoppedBeforeProcessing);
+        Assert.Equal(100, harness.ViewModel.ProgressPercent);
     }
 
     [Fact]
@@ -170,7 +175,7 @@ public sealed class MainWindowViewModelTests
     public async Task Missing_batch_log_is_visible_and_disables_open_log()
     {
         MainWindowHarness harness = MainWindowHarness.ReadyWithMedia();
-        harness.Batch.NextSummary = TestSummaries.Success(logWritten: false);
+        harness.Batch.LogWritten = false;
 
         await harness.ViewModel.StartMarkAsync();
 
@@ -204,6 +209,70 @@ public sealed class MainWindowViewModelTests
 
         Assert.Equal(WorkspaceState.Ready, harness.ViewModel.State);
         Assert.True(harness.ViewModel.IsDetailsExpanded);
+    }
+
+    [Fact]
+    public async Task Delayed_file_selection_blocks_other_selection_and_run_commands()
+    {
+        MainWindowHarness harness = MainWindowHarness.ReadyWithMedia();
+        harness.Paths.File(@"D:\new.png", 40);
+        harness.Selection.BlockFilesUntilReleased();
+
+        Task selection = harness.ViewModel.AddFilesCommand.ExecuteAsync();
+        await harness.Selection.FilesRequested;
+
+        Assert.False(harness.ViewModel.AddFilesCommand.CanExecute(null));
+        Assert.False(harness.ViewModel.AddFolderCommand.CanExecute(null));
+        Assert.False(harness.ViewModel.StartMarkCommand.CanExecute(null));
+        Assert.False(harness.ViewModel.VerifyOnlyCommand.CanExecute(null));
+
+        await harness.ViewModel.StartMarkCommand.ExecuteAsync();
+        Assert.False(harness.Batch.WasStarted);
+
+        harness.Selection.ReleaseFiles([@"D:\new.png"]);
+        await selection;
+
+        Assert.Equal(WorkspaceState.Ready, harness.ViewModel.State);
+        Assert.Equal(3, harness.ViewModel.MediaCount);
+    }
+
+    [Fact]
+    public async Task Reset_invalidates_a_delayed_file_selection_result()
+    {
+        MainWindowHarness harness = MainWindowHarness.ReadyWithMedia();
+        harness.Paths.File(@"D:\stale.jpg", 40);
+        harness.Selection.BlockFilesUntilReleased();
+
+        Task selection = harness.ViewModel.AddFilesCommand.ExecuteAsync();
+        await harness.Selection.FilesRequested;
+        harness.ViewModel.ResetCommand.Execute(null);
+
+        harness.Selection.ReleaseFiles([@"D:\stale.jpg"]);
+        await selection;
+
+        Assert.Equal(WorkspaceState.Empty, harness.ViewModel.State);
+        Assert.Empty(harness.ViewModel.MediaItems);
+    }
+
+    [Fact]
+    public async Task Multiple_output_roots_are_shown_honestly_and_opened_once_in_stable_order()
+    {
+        MainWindowHarness harness = MainWindowHarness.Empty();
+        harness.Paths
+            .Directory(@"E:\营销")
+            .File(@"E:\营销\b.png", 20)
+            .Directory(@"D:\商品")
+            .File(@"D:\商品\a.jpg", 10);
+        await harness.ViewModel.AddPathsAsync([@"E:\营销", @"D:\商品"]);
+
+        Assert.Equal("多个输出位置（2）", harness.ViewModel.OutputPath);
+
+        await harness.ViewModel.StartMarkAsync();
+        await harness.ViewModel.OpenOutputCommand.ExecuteAsync();
+
+        Assert.Equal(
+            [@"D:\EMKE 已标记\商品", @"E:\EMKE 已标记\营销"],
+            harness.Shell.OpenedPaths);
     }
 }
 

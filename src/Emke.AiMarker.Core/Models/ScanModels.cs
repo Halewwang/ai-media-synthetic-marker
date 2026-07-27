@@ -13,4 +13,5 @@ public sealed record ScanIssue(string Path, string Error);
 
 public sealed record ScanResult(
     IReadOnlyList<DiscoveredMedia> Media,
-    IReadOnlyList<ScanIssue> Issues);
+    IReadOnlyList<ScanIssue> Issues,
+    int SkippedUnsupportedCount);

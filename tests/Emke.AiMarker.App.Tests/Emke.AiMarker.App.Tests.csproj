@@ -5,7 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,9 +23,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Emke.AiMarker.App\Emke.AiMarker.App.csproj">
-      <AdditionalProperties>SelfContained=false</AdditionalProperties>
-    </ProjectReference>
+    <ProjectReference Include="..\..\src\Emke.AiMarker.App\Emke.AiMarker.App.csproj" />
   </ItemGroup>
 
 </Project>

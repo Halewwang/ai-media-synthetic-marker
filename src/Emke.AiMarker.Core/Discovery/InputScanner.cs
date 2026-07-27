@@ -13,6 +13,7 @@ public sealed class InputScanner(IPathAccess paths)
         var issues = new List<ScanIssue>();
         var seenPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var visitedDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int skippedUnsupportedCount = 0;
 
         foreach (string input in inputs)
         {
@@ -35,12 +36,19 @@ public sealed class InputScanner(IPathAccess paths)
                 continue;
             }
 
-            ScanInput(topLevelInput, seenPaths, visitedDirectories, media, issues);
+            ScanInput(
+                topLevelInput,
+                seenPaths,
+                visitedDirectories,
+                media,
+                issues,
+                ref skippedUnsupportedCount);
         }
 
         return new(
             media.OrderBy(item => item.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray(),
-            issues);
+            issues,
+            skippedUnsupportedCount);
     }
 
     private void ScanInput(
@@ -48,7 +56,8 @@ public sealed class InputScanner(IPathAccess paths)
         ISet<string> seenPaths,
         ISet<string> visitedDirectories,
         ICollection<DiscoveredMedia> media,
-        ICollection<ScanIssue> issues)
+        ICollection<ScanIssue> issues,
+        ref int skippedUnsupportedCount)
     {
         PathEntryKind kind;
         try
@@ -64,7 +73,14 @@ public sealed class InputScanner(IPathAccess paths)
         switch (kind)
         {
             case PathEntryKind.File:
-                AddFile(topLevelInput, topLevelInput, null, seenPaths, media, issues);
+                AddFile(
+                    topLevelInput,
+                    topLevelInput,
+                    null,
+                    seenPaths,
+                    media,
+                    issues,
+                    ref skippedUnsupportedCount);
                 break;
             case PathEntryKind.Directory:
                 ScanDirectory(
@@ -73,7 +89,8 @@ public sealed class InputScanner(IPathAccess paths)
                     seenPaths,
                     visitedDirectories,
                     media,
-                    issues);
+                    issues,
+                    ref skippedUnsupportedCount);
                 break;
             case PathEntryKind.ReparseFile:
             case PathEntryKind.ReparseDirectory:
@@ -93,7 +110,8 @@ public sealed class InputScanner(IPathAccess paths)
         ISet<string> seenPaths,
         ISet<string> visitedDirectories,
         ICollection<DiscoveredMedia> media,
-        ICollection<ScanIssue> issues)
+        ICollection<ScanIssue> issues,
+        ref int skippedUnsupportedCount)
     {
         if (!visitedDirectories.Add(directory))
         {
@@ -129,7 +147,14 @@ public sealed class InputScanner(IPathAccess paths)
             switch (kind)
             {
                 case PathEntryKind.File:
-                    AddFile(child, topLevelInput, directory, seenPaths, media, issues);
+                    AddFile(
+                        child,
+                        topLevelInput,
+                        directory,
+                        seenPaths,
+                        media,
+                        issues,
+                        ref skippedUnsupportedCount);
                     break;
                 case PathEntryKind.Directory:
                     ScanDirectory(
@@ -138,7 +163,8 @@ public sealed class InputScanner(IPathAccess paths)
                         seenPaths,
                         visitedDirectories,
                         media,
-                        issues);
+                        issues,
+                        ref skippedUnsupportedCount);
                     break;
                 case PathEntryKind.ReparseFile:
                 case PathEntryKind.ReparseDirectory:
@@ -159,7 +185,8 @@ public sealed class InputScanner(IPathAccess paths)
         string? currentDirectory,
         ISet<string> seenPaths,
         ICollection<DiscoveredMedia> media,
-        ICollection<ScanIssue> issues)
+        ICollection<ScanIssue> issues,
+        ref int skippedUnsupportedCount)
     {
         string sourcePath;
         try
@@ -180,6 +207,7 @@ public sealed class InputScanner(IPathAccess paths)
         string extension = GetExtension(sourcePath);
         if (!MarkerContract.SupportedExtensions.Contains(extension))
         {
+            skippedUnsupportedCount++;
             return;
         }
 

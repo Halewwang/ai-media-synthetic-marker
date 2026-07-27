@@ -18,12 +18,13 @@ public sealed class InputScannerTests
             .File(@"D:\商品\忽略.txt", 2);
 
         ScanResult result = new InputScanner(paths).Scan(
-            [@"D:\商品", @"D:\商品\a.JPG"]);
+            [@"D:\商品", @"D:\商品\a.JPG", @"D:\商品\忽略.txt"]);
 
         Assert.Equal(
             [@"a.JPG", @"B.MP4", @"子目录\透明.PNG"],
             result.Media.Select(item => item.RelativePath));
         Assert.Empty(result.Issues);
+        Assert.Equal(1, result.SkippedUnsupportedCount);
     }
 
     [Fact]
