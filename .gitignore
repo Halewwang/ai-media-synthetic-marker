@@ -71,6 +71,7 @@ __pypackages__/
 !.env.example
 
 # Editors and operating-system files
+.superpowers/
 .vscode/
 .idea/
 *.swp
