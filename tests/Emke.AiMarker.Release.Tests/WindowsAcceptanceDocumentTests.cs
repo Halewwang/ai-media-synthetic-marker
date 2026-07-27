@@ -46,12 +46,7 @@ public sealed class WindowsAcceptanceDocumentTests
                 Assert.Contains("Pass condition:", section, StringComparison.Ordinal);
             });
 
-        Assert.Contains(
-            "& \".\\EMKE AI Marker.exe\" --self-test --report \".\\self-test.txt\"",
-            checklist,
-            StringComparison.Ordinal);
-        Assert.Contains("$LASTEXITCODE", checklist, StringComparison.Ordinal);
-        Assert.Contains("Get-Content .\\self-test.txt", checklist, StringComparison.Ordinal);
+        AssertSelfTestExecutionContract(checklist);
         Assert.Contains("Expected exit code: `0`", checklist, StringComparison.Ordinal);
         Assert.Contains("Expected final line: `Result=ok`", checklist, StringComparison.Ordinal);
         Assert.Contains(
@@ -186,6 +181,105 @@ public sealed class WindowsAcceptanceDocumentTests
     }
 
     [Fact]
+    public void Self_test_execution_contract_rejects_comments_and_dead_branches()
+    {
+        string checklist = Read("docs/validation/windows-11-x64-smoke.md");
+        string[] statements =
+        [
+            "& \".\\EMKE AI Marker.exe\" --self-test --report \".\\self-test.txt\"",
+            "$LASTEXITCODE",
+            "Get-Content .\\self-test.txt",
+        ];
+
+        foreach (string statement in statements)
+        {
+            string commented = ReplaceRequired(
+                checklist,
+                statement,
+                $"# {statement}");
+            Assert.ThrowsAny<Exception>(
+                () => AssertSelfTestExecutionContract(commented));
+
+            string deadBranch = ReplaceRequired(
+                checklist,
+                statement,
+                $"if ($ActualZipHash -ne $ExpectedZipHash) {{\n  {statement}\n}}");
+            Assert.ThrowsAny<Exception>(
+                () => AssertSelfTestExecutionContract(deadBranch));
+        }
+    }
+
+    [Fact]
+    public void Every_PowerShell_fence_in_the_smoke_checklist_parses()
+    {
+        string checklist = Read("docs/validation/windows-11-x64-smoke.md");
+        IReadOnlyList<PowerShellBlock> blocks =
+            PowerShellDocumentAnalysis.Blocks(checklist);
+
+        Assert.Equal(20, blocks.Count);
+        Assert.All(blocks, block => PowerShellDocumentAnalysis.Analyze(block));
+    }
+
+    [Fact]
+    public void Checksum_mismatch_requires_throw_in_the_matching_clause()
+    {
+        string checklist = Read("docs/validation/windows-11-x64-smoke.md");
+        const string correctClause =
+            """
+            if ($ActualZipHash -ne $ExpectedZipHash) {
+              throw "Product ZIP SHA-256 does not match SHA256SUMS.txt."
+            }
+            """;
+        const string throwOnlyInElse =
+            """
+            if ($ActualZipHash -ne $ExpectedZipHash) {
+              $null = "mismatch detected"
+            } else {
+              throw "Product ZIP SHA-256 does not match SHA256SUMS.txt."
+            }
+            """;
+
+        string wrongClause = ReplaceRequired(
+            checklist,
+            correctClause,
+            throwOnlyInElse);
+
+        Assert.ThrowsAny<Exception>(
+            () => AssertPackageExecutionContract(wrongClause));
+    }
+
+    [Fact]
+    public void Read_only_hash_evidence_must_be_executed_inside_the_output_loop()
+    {
+        string checklist = Read("docs/validation/windows-11-x64-smoke.md");
+        const string evidenceStatement =
+            """
+              $HashEvidence
+              if (-not $HashEvidence.Equal) {
+            """;
+
+        string commented = ReplaceRequired(
+            checklist,
+            evidenceStatement,
+            """
+              # $HashEvidence
+              if (-not $HashEvidence.Equal) {
+            """);
+        Assert.ThrowsAny<Exception>(
+            () => AssertReadOnlyExecutionContract(commented));
+
+        string stringified = ReplaceRequired(
+            checklist,
+            evidenceStatement,
+            """
+              "$HashEvidence"
+              if (-not $HashEvidence.Equal) {
+            """);
+        Assert.ThrowsAny<Exception>(
+            () => AssertReadOnlyExecutionContract(stringified));
+    }
+
+    [Fact]
     public void Blocked_result_records_every_item_and_cannot_satisfy_the_acceptance_gate()
     {
         string result = Read("docs/validation/windows-11-x64-smoke-result.md");
@@ -271,7 +365,9 @@ public sealed class WindowsAcceptanceDocumentTests
         PowerShellAstNode wrongHash = TopLevelIf(
             checksum,
             "$ActualZipHash -ne $ExpectedZipHash");
-        Assert.True(checksum.HasDirectThrow(lineCount));
+        Assert.True(
+            checksum.HasDirectThrow(lineCount),
+            DirectThrowDiagnostic(checksum, lineCount));
         Assert.True(checksum.HasDirectThrow(invalidFormat));
         Assert.True(checksum.HasDirectThrow(wrongFilename));
         Assert.True(checksum.HasDirectThrow(wrongHash));
@@ -346,6 +442,51 @@ public sealed class WindowsAcceptanceDocumentTests
             < checksum.GlobalStart(exifToolVersion));
     }
 
+    private static void AssertSelfTestExecutionContract(string checklist)
+    {
+        PowerShellBlock checksumBlock = Assert.Single(
+            PowerShellDocumentAnalysis.BlocksInSection(
+                checklist,
+                "### Step 2 —"));
+        PowerShellBlock selfTestBlock = Assert.Single(
+            PowerShellDocumentAnalysis.BlocksInSection(
+                checklist,
+                "### Headless self-test"));
+        PowerShellAst checksum = PowerShellDocumentAnalysis.Analyze(checksumBlock);
+        PowerShellAst selfTest = PowerShellDocumentAnalysis.Analyze(selfTestBlock);
+
+        PowerShellAstNode wrongHash = TopLevelIf(
+            checksum,
+            "$ActualZipHash -ne $ExpectedZipHash");
+        PowerShellAstNode appInvocation = TopLevelCommandStatement(
+            selfTest,
+            command => command.Text.Trim() ==
+                "& \".\\EMKE AI Marker.exe\" --self-test --report \".\\self-test.txt\"");
+        PowerShellAstNode exitCode = Assert.Single(
+            selfTest.TopLevelStatements,
+            statement =>
+                statement.Label == "PipelineAst"
+                && statement.Text.Trim() == "$LASTEXITCODE");
+        PowerShellAstNode report = TopLevelCommandStatement(
+            selfTest,
+            command =>
+                command.Label.Equals(
+                    "Get-Content",
+                    StringComparison.OrdinalIgnoreCase)
+                && command.Text.Trim() == "Get-Content .\\self-test.txt");
+
+        int headingStart = checklist.IndexOf(
+            "### Headless self-test",
+            StringComparison.Ordinal);
+        Assert.True(
+            checksum.GlobalStart(wrongHash) < headingStart,
+            "Self-test heading must follow the successful checksum gate.");
+        Assert.True(
+            checksumBlock.ContentEnd < selfTestBlock.ContentStart,
+            "Self-test block must follow the complete checksum block.");
+        AssertOrdered(appInvocation, exitCode, report);
+    }
+
     private static void AssertReadOnlyExecutionContract(string checklist)
     {
         IReadOnlyList<PowerShellBlock> blocks =
@@ -369,7 +510,9 @@ public sealed class WindowsAcceptanceDocumentTests
         PowerShellAstNode aggregate = TopLevelIf(
             after,
             "$OutputHashMismatches.Count -ne 0");
-        Assert.True(after.HasDirectThrow(aggregate));
+        Assert.True(
+            after.HasDirectThrow(aggregate),
+            DirectThrowDiagnostic(after, aggregate));
         PowerShellAstNode beforeLoop = Assert.Single(
             before.TopLevelStatements,
             node =>
@@ -414,6 +557,12 @@ public sealed class WindowsAcceptanceDocumentTests
                     "$AfterOutputHashes[$OutputFile.Name] -eq $BeforeOutputHashes[$OutputFile.Name]"
                 && expression.Start >= evidence.Start
                 && expression.End <= evidence.End);
+        PowerShellAstNode evidenceOutput = Assert.Single(
+            after.Statements,
+            statement =>
+                statement.Label == "PipelineAst"
+                && statement.Text.Trim() == "$HashEvidence"
+                && statement.ParentStart == afterLoop.RelatedStart);
         Assert.Contains(
             after.Commands,
             command =>
@@ -436,11 +585,42 @@ public sealed class WindowsAcceptanceDocumentTests
         Assert.True(beforeHashes.Start >= 0);
         Assert.True(equality.Start >= 0);
         AssertOrdered(beforeHashes, beforeLoop);
+        AssertOrdered(evidence, evidenceOutput);
         AssertOrdered(afterHashes, mismatches, afterLoop, aggregate);
         Assert.True(
             after.GlobalStart(aggregate)
             < exifTool.GlobalStart(independentExifTool));
     }
+
+    private static PowerShellAstNode TopLevelCommandStatement(
+        PowerShellAst ast,
+        Func<PowerShellAstNode, bool> predicate)
+    {
+        PowerShellAstNode command = Assert.Single(
+            ast.Commands,
+            command => predicate(command));
+        return Assert.Single(
+            ast.TopLevelStatements,
+            statement =>
+                statement.Label == "PipelineAst"
+                && statement.Start <= command.Start
+                && command.End <= statement.End);
+    }
+
+    private static string DirectThrowDiagnostic(
+        PowerShellAst ast,
+        PowerShellAstNode statement) =>
+        $"if={statement.Start}:{statement.Label}; clauses="
+        + string.Join(
+            ";",
+            ast.IfClauses.Select(
+                clause =>
+                    $"{clause.Start}:{clause.ParentStart}:{clause.Label}"))
+        + "; throws="
+        + string.Join(
+            ";",
+            ast.Throws.Select(
+                item => $"{item.Start}:{item.ParentStart}:{item.Text}"));
 
     private static PowerShellAstNode TopLevelAssignment(
         PowerShellAst ast,
