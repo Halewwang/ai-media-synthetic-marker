@@ -21,17 +21,14 @@ public sealed class PhysicalCopyTransactionTests
         Assert.Equal(plan.TempPath, media.WorkingPath);
         Assert.Equal(
             [1, 2, 3],
-            await File.ReadAllBytesAsync(
-                plan.SourcePath,
-                TestContext.Current.CancellationToken));
+            File.ReadAllBytes(plan.SourcePath));
         Assert.Equal(
             [1, 2, 3],
-            await File.ReadAllBytesAsync(
-                plan.TempPath,
-                TestContext.Current.CancellationToken));
+            File.ReadAllBytes(plan.TempPath));
         Assert.False(File.Exists(plan.FinalPath));
 
         await transaction.RollbackAsync(media);
+        Assert.False(File.Exists(plan.TempPath));
     }
 
     [Theory]
