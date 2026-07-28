@@ -248,7 +248,7 @@ internal sealed class OwnedTempFile : IDisposable
         }
 
         SafeFileHandle handle = CreateFile(
-            path,
+            ToExtendedWindowsPath(path),
             GenericRead | GenericWrite | DeleteAccess,
             FileShareRead | FileShareWrite,
             IntPtr.Zero,
@@ -277,7 +277,10 @@ internal sealed class OwnedTempFile : IDisposable
         int rootOffset = IntPtr.Size == 8 ? 8 : 4;
         int lengthOffset = IntPtr.Size == 8 ? 16 : 8;
         int nameOffset = IntPtr.Size == 8 ? 20 : 12;
-        int bufferLength = checked(nameOffset + fileName.Length);
+        int bufferLength = checked(
+            nameOffset
+            + fileName.Length
+            + sizeof(char));
         IntPtr buffer = Marshal.AllocHGlobal(bufferLength);
         try
         {
@@ -305,6 +308,24 @@ internal sealed class OwnedTempFile : IDisposable
         {
             Marshal.FreeHGlobal(buffer);
         }
+    }
+
+    private static string ToExtendedWindowsPath(string path)
+    {
+        string fullPath = System.IO.Path
+            .GetFullPath(path)
+            .Replace('/', '\\');
+        if (fullPath.StartsWith(@"\\?\", StringComparison.Ordinal))
+        {
+            return fullPath;
+        }
+
+        if (fullPath.StartsWith(@"\\", StringComparison.Ordinal))
+        {
+            return $@"\\?\UNC\{fullPath[2..]}";
+        }
+
+        return $@"\\?\{fullPath}";
     }
 
     private void DeleteWindowsLease()

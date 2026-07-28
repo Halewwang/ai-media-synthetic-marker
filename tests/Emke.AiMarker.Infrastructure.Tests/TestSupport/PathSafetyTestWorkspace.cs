@@ -114,7 +114,38 @@ internal sealed class PathSafetyTestWorkspace : IDisposable
     {
         if (Directory.Exists(Root))
         {
-            Directory.Delete(Root, recursive: true);
+            DeleteTreeNoFollow(Root);
         }
+    }
+
+    private static void DeleteTreeNoFollow(string path)
+    {
+        FileAttributes attributes = File.GetAttributes(path);
+        if (attributes.HasFlag(FileAttributes.ReparsePoint))
+        {
+            if (attributes.HasFlag(FileAttributes.Directory))
+            {
+                Directory.Delete(path);
+            }
+            else
+            {
+                File.Delete(path);
+            }
+
+            return;
+        }
+
+        if (!attributes.HasFlag(FileAttributes.Directory))
+        {
+            File.Delete(path);
+            return;
+        }
+
+        foreach (string entry in Directory.EnumerateFileSystemEntries(path))
+        {
+            DeleteTreeNoFollow(entry);
+        }
+
+        Directory.Delete(path);
     }
 }

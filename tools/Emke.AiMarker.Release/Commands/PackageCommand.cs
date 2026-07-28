@@ -684,16 +684,19 @@ public sealed class PackageCommand
         try
         {
             EnsureExistingOutputDirectorySafe(root, output);
-            using var stream = new FileStream(
-                temporary,
-                FileMode.CreateNew,
-                FileAccess.Write,
-                FileShare.None,
-                bufferSize: 4096,
-                FileOptions.WriteThrough);
-            byte[] bytes = Utf8.GetBytes(content);
-            stream.Write(bytes);
-            stream.Flush(flushToDisk: true);
+            using (var stream = new FileStream(
+                       temporary,
+                       FileMode.CreateNew,
+                       FileAccess.Write,
+                       FileShare.None,
+                       bufferSize: 4096,
+                       FileOptions.WriteThrough))
+            {
+                byte[] bytes = Utf8.GetBytes(content);
+                stream.Write(bytes);
+                stream.Flush(flushToDisk: true);
+            }
+
             EnsureExistingOutputDirectorySafe(root, output);
             File.Move(temporary, path, overwrite: false);
         }

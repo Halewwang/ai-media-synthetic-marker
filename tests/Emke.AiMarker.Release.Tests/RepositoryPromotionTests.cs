@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -110,6 +111,23 @@ public sealed partial class RepositoryPromotionTests
         Assert.DoesNotContain(
             "scripts\\fetch_exiftool.py",
             productionDocs,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Exact_sdk_and_release_test_helper_are_part_of_the_build_contract()
+    {
+        using JsonDocument globalJson =
+            JsonDocument.Parse(Read("global.json"));
+        JsonElement sdk = globalJson.RootElement.GetProperty("sdk");
+
+        Assert.Equal("10.0.100", sdk.GetProperty("version").GetString());
+        Assert.Equal("disable", sdk.GetProperty("rollForward").GetString());
+
+        string solution = Read("Emke.AiMarker.sln");
+        Assert.Contains(
+            "Emke.AiMarker.ProcessRunner.TestHelper",
+            solution,
             StringComparison.Ordinal);
     }
 

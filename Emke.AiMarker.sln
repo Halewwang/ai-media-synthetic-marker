@@ -27,6 +27,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Emke.AiMarker.Release", "to
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Emke.AiMarker.Release.Tests", "tests\Emke.AiMarker.Release.Tests\Emke.AiMarker.Release.Tests.csproj", "{07B92FEA-0543-46FE-8146-D9CC1909D491}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Emke.AiMarker.ProcessRunner.TestHelper", "tests\Emke.AiMarker.ProcessRunner.TestHelper\Emke.AiMarker.ProcessRunner.TestHelper.csproj", "{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -145,6 +147,18 @@ Global
 		{07B92FEA-0543-46FE-8146-D9CC1909D491}.Release|x64.Build.0 = Release|Any CPU
 		{07B92FEA-0543-46FE-8146-D9CC1909D491}.Release|x86.ActiveCfg = Release|Any CPU
 		{07B92FEA-0543-46FE-8146-D9CC1909D491}.Release|x86.Build.0 = Release|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Debug|x64.Build.0 = Debug|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Debug|x86.Build.0 = Debug|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Release|x64.ActiveCfg = Release|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Release|x64.Build.0 = Release|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Release|x86.ActiveCfg = Release|Any CPU
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -159,5 +173,6 @@ Global
 		{245DBE11-6BEB-4453-A7E2-E73E70249261} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{E3BF7846-B03A-4719-A4F2-B99BDDA7F046} = {47EAB880-2483-4A3E-8D13-60E096A1DB64}
 		{07B92FEA-0543-46FE-8146-D9CC1909D491} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{C0B3B42A-70E4-45EF-9C1E-9C391227C6A4} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 	EndGlobalSection
 EndGlobal

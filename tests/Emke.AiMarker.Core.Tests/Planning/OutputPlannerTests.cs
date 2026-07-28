@@ -26,6 +26,23 @@ public sealed class OutputPlannerTests
     }
 
     [Fact]
+    public void Folder_directly_below_drive_root_keeps_windows_separators()
+    {
+        var media = new DiscoveredMedia(
+            @"D:\商品\look.JPG",
+            @"D:\商品",
+            "look.JPG",
+            ".JPG",
+            100);
+
+        OutputPlanItem item = OutputPlanner.Plan([media], customOutputRoot: null).Single();
+
+        Assert.Equal(
+            @"D:\EMKE 已标记\商品\look.JPG",
+            item.FinalPath);
+    }
+
+    [Fact]
     public void Single_file_input_keeps_a_unc_parent_when_using_default_output()
     {
         var media = new DiscoveredMedia(

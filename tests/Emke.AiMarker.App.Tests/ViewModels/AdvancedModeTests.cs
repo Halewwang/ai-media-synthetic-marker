@@ -25,6 +25,8 @@ public sealed class AdvancedModeTests
         Assert.Equal(2, harness.Prompts.OriginalWriteConfirmationCount);
         Assert.Equal(1, harness.Batch.StartCount);
 
+        await harness.ViewModel.ResetCommand.ExecuteAsync();
+        await harness.ViewModel.AddPathsAsync([@"D:\商品"]);
         harness.ViewModel.IsOverwriteOriginals = true;
         harness.Prompts.NextOriginalWriteConfirmation = false;
         await harness.ViewModel.StartMarkAsync();

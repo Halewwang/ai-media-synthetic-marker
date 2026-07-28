@@ -9,5 +9,8 @@
 *.cmd text eol=crlf
 *.txt text eol=crlf
 
+packaging/licenses/dotnet/LICENSE.txt -text
+packaging/licenses/dotnet/ThirdPartyNotices.txt -text
+
 *.zip binary
 *.exe binary

@@ -92,7 +92,11 @@ public static class OutputPlanner
 
     private static string Combine(params string[] paths)
     {
-        char separator = paths.Any(path => path.Contains('\\')) ? '\\' : '/';
+        bool windowsPath = paths.Any(path => path.Contains('\\'))
+            || paths.FirstOrDefault() is { Length: 2 } root
+                && char.IsAsciiLetter(root[0])
+                && root[1] == ':';
+        char separator = windowsPath ? '\\' : '/';
         string[] nonEmptyPaths = paths.Where(path => path.Length > 0).ToArray();
         if (nonEmptyPaths.Length == 0)
         {
