@@ -31,6 +31,39 @@ public sealed class PhysicalCopyTransactionTests
         Assert.False(File.Exists(plan.TempPath));
     }
 
+    [Fact]
+    public async Task Windows_prepared_copy_allows_an_identity_preserving_writer()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("仅在 Windows 上验证句柄共享模式。");
+        }
+
+        using var workspace = new TemporaryWorkspace();
+        OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
+        var transaction = new PhysicalCopyTransaction();
+        PreparedMedia media = await transaction.PrepareAsync(
+            plan,
+            RunMode.MarkCopies,
+            TestContext.Current.CancellationToken);
+
+        await using (var writer = new FileStream(
+            plan.TempPath,
+            FileMode.Open,
+            FileAccess.Write,
+            FileShare.ReadWrite))
+        {
+            writer.Position = writer.Length;
+            await writer.WriteAsync(
+                new byte[] { 4 },
+                TestContext.Current.CancellationToken);
+        }
+
+        Assert.Equal([1, 2, 3, 4], File.ReadAllBytes(plan.TempPath));
+        await transaction.RollbackAsync(media);
+        Assert.False(File.Exists(plan.TempPath));
+    }
+
     [Theory]
     [InlineData(RunMode.MarkOriginals)]
     [InlineData(RunMode.VerifyOnly)]

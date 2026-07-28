@@ -54,9 +54,10 @@ public sealed class SingleInstanceGuardTests
         using var acquired = new ManualResetEventSlim();
         var abandoningThread = new Thread(() =>
         {
-            using var abandoned = new Mutex(initiallyOwned: false, name);
+            var abandoned = new Mutex(initiallyOwned: false, name);
             abandoned.WaitOne();
             acquired.Set();
+            GC.KeepAlive(abandoned);
         });
 
         abandoningThread.Start();

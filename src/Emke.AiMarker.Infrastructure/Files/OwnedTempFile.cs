@@ -13,6 +13,7 @@ internal sealed class OwnedTempFile : IDisposable
     private const uint FileShareRead = 0x00000001;
     private const uint FileShareWrite = 0x00000002;
     private const uint CreateNew = 1;
+    private const uint OpenExisting = 3;
     private const uint FileAttributeNormal = 0x00000080;
     private const uint FileFlagSequentialScan = 0x08000000;
     private const int FileRenameInfo = 3;
@@ -20,6 +21,7 @@ internal sealed class OwnedTempFile : IDisposable
 
     private readonly FileIdentity _identity;
     private FileStream? _lease;
+    private bool _leaseCanDelete;
     private bool _verified;
 
     private OwnedTempFile(
@@ -33,6 +35,7 @@ internal sealed class OwnedTempFile : IDisposable
         FinalPath = finalPath;
         Token = token;
         _lease = lease;
+        _leaseCanDelete = OperatingSystem.IsWindows();
         _identity = identity;
     }
 
@@ -77,6 +80,12 @@ internal sealed class OwnedTempFile : IDisposable
     {
         FileStream lease = RequireLease();
         lease.Flush(flushToDisk: true);
+        if (OperatingSystem.IsWindows())
+        {
+            TransitionToExifToolLease();
+            return;
+        }
+
         lease.Position = 0;
     }
 
@@ -100,6 +109,18 @@ internal sealed class OwnedTempFile : IDisposable
 
     public void SealVerifiedPath()
     {
+        if (OperatingSystem.IsWindows())
+        {
+            if (!TryLockWindowsFinalizationLease())
+            {
+                throw new IOException(
+                    "严格验证后的临时文件所有权无法证明，可能已被替换。");
+            }
+
+            _verified = true;
+            return;
+        }
+
         if (!StillOwnsCurrentPath())
         {
             throw new IOException(
@@ -139,6 +160,11 @@ internal sealed class OwnedTempFile : IDisposable
     {
         if (OperatingSystem.IsWindows())
         {
+            if (!TryLockWindowsFinalizationLease())
+            {
+                return;
+            }
+
             DeleteWindowsLease();
             return;
         }
@@ -153,6 +179,7 @@ internal sealed class OwnedTempFile : IDisposable
     {
         _lease?.Dispose();
         _lease = null;
+        _leaseCanDelete = false;
     }
 
     public static bool HasOwnedPathShape(
@@ -270,8 +297,123 @@ internal sealed class OwnedTempFile : IDisposable
             isAsync: false);
     }
 
+    private void TransitionToExifToolLease()
+    {
+        _lease?.Dispose();
+        _lease = null;
+        _leaseCanDelete = false;
+
+        FileStream lease = OpenWindowsExistingLease(
+            Path,
+            GenericRead,
+            FileAccess.Read,
+            "无法为 ExifTool 保持临时文件所有权");
+        FileIdentity identity = CaptureIdentity(lease.SafeFileHandle);
+        if (identity != _identity)
+        {
+            lease.Dispose();
+            throw new IOException(
+                "复制完成后的临时文件所有权无法证明，可能已被替换。");
+        }
+
+        _lease = lease;
+    }
+
+    private bool TryLockWindowsFinalizationLease()
+    {
+        if (_leaseCanDelete)
+        {
+            return CaptureIdentity(RequireLease().SafeFileHandle) == _identity;
+        }
+
+        _lease?.Dispose();
+        _lease = null;
+
+        FileStream? lease = TryOpenWindowsFinalizationLease();
+        if (lease is null)
+        {
+            return false;
+        }
+
+        _lease = lease;
+        _leaseCanDelete = true;
+        return true;
+    }
+
+    private FileStream? TryOpenWindowsFinalizationLease()
+    {
+        SafeFileHandle handle = CreateFile(
+            ToExtendedWindowsPath(Path),
+            GenericRead | DeleteAccess,
+            FileShareRead | FileShareWrite,
+            IntPtr.Zero,
+            OpenExisting,
+            FileAttributeNormal,
+            IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            int error = Marshal.GetLastPInvokeError();
+            handle.Dispose();
+            if (error is 2 or 3)
+            {
+                return null;
+            }
+
+            throw new IOException(
+                $"无法锁定已验证临时文件，Windows 错误 {error}：{Path}");
+        }
+
+        var lease = new FileStream(
+            handle,
+            FileAccess.Read,
+            bufferSize: 4096,
+            isAsync: false);
+        if (CaptureIdentity(lease.SafeFileHandle) != _identity)
+        {
+            lease.Dispose();
+            return null;
+        }
+
+        return lease;
+    }
+
+    private static FileStream OpenWindowsExistingLease(
+        string path,
+        uint desiredAccess,
+        FileAccess streamAccess,
+        string operation)
+    {
+        SafeFileHandle handle = CreateFile(
+            ToExtendedWindowsPath(path),
+            desiredAccess,
+            FileShareRead | FileShareWrite,
+            IntPtr.Zero,
+            OpenExisting,
+            FileAttributeNormal,
+            IntPtr.Zero);
+        if (handle.IsInvalid)
+        {
+            int error = Marshal.GetLastPInvokeError();
+            handle.Dispose();
+            throw new IOException(
+                $"{operation}，Windows 错误 {error}：{path}");
+        }
+
+        return new FileStream(
+            handle,
+            streamAccess,
+            bufferSize: 4096,
+            isAsync: false);
+    }
+
     private void RenameWindowsLease(string finalPath)
     {
+        if (!_leaseCanDelete)
+        {
+            throw new IOException(
+                "临时文件未锁定到可提交句柄，已拒绝重命名。");
+        }
+
         string absoluteFinalPath = System.IO.Path.GetFullPath(finalPath);
         byte[] fileName = Encoding.Unicode.GetBytes(absoluteFinalPath);
         int rootOffset = IntPtr.Size == 8 ? 8 : 4;
@@ -330,6 +472,12 @@ internal sealed class OwnedTempFile : IDisposable
 
     private void DeleteWindowsLease()
     {
+        if (!_leaseCanDelete)
+        {
+            throw new IOException(
+                "临时文件未锁定到可删除句柄，已拒绝回滚。");
+        }
+
         IntPtr disposition = Marshal.AllocHGlobal(1);
         try
         {

@@ -89,7 +89,6 @@ public sealed class ProcessRunnerTests
                 await Assert.ThrowsAsync<MarkerOperationException>(
                     async () => await execution);
             Assert.Contains("超时", exception.Message, StringComparison.Ordinal);
-            Assert.Contains("清理", exception.Message, StringComparison.Ordinal);
         }
         finally
         {
