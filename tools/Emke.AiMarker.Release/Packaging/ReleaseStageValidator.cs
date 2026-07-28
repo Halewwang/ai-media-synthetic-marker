@@ -90,6 +90,12 @@ public static partial class ReleaseStageValidator
             "exiftool.lock.json",
         };
 
+    private static readonly HashSet<string> LockedVendorTextWithPathExamples =
+        new(StringComparer.Ordinal)
+        {
+            "exiftool/exiftool_files/windows_exiftool.txt",
+        };
+
     public static void Validate(string stageRoot, string manifestPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(stageRoot);
@@ -372,6 +378,11 @@ public static partial class ReleaseStageValidator
 
         byte[] bytes = File.ReadAllBytes(fullPath);
         string text = DecodeText(bytes, relativePath);
+        if (LockedVendorTextWithPathExamples.Contains(relativePath))
+        {
+            return;
+        }
+
         if (WindowsDrivePath().IsMatch(text)
             || UncPath().IsMatch(text)
             || UnixUserPath().IsMatch(text))

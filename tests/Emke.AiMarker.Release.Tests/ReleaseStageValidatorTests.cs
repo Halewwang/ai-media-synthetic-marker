@@ -52,6 +52,35 @@ public sealed class ReleaseStageValidatorTests
             () => ReleaseStageValidator.Validate(stage, manifest));
     }
 
+    [Fact]
+    public void Locked_exiftool_vendor_document_may_keep_upstream_path_examples()
+    {
+        using var temp = new TemporaryDirectory();
+        string manifest = ReleaseFixtures.CreateManifest(temp);
+        string stage = ReleaseFixtures.CreateValidStage(temp);
+        ReleaseFixtures.Write(
+            stage,
+            "exiftool/exiftool_files/windows_exiftool.txt",
+            @"upstream example: C:\WINDOWS\exiftool.exe");
+
+        ReleaseStageValidator.Validate(stage, manifest);
+    }
+
+    [Fact]
+    public void Adjacent_exiftool_text_is_not_exempt_from_privacy_scanning()
+    {
+        using var temp = new TemporaryDirectory();
+        string manifest = ReleaseFixtures.CreateManifest(temp);
+        string stage = ReleaseFixtures.CreateValidStage(temp);
+        ReleaseFixtures.Write(
+            stage,
+            "exiftool/exiftool_files/private.txt",
+            @"local=C:\Users\maintainer\source");
+
+        Assert.Throws<ReleaseToolException>(
+            () => ReleaseStageValidator.Validate(stage, manifest));
+    }
+
     [Theory]
     [InlineData("utf16le-no-bom")]
     [InlineData("utf16be-no-bom")]
