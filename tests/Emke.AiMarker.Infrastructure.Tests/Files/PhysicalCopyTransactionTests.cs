@@ -369,7 +369,7 @@ public sealed class PhysicalCopyTransactionTests
     }
 
     [Fact]
-    public async Task Seal_substitution_is_blocked_on_Windows_or_refused_elsewhere()
+    public async Task Seal_refuses_a_replaced_temp_and_preserves_foreign_bytes()
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
@@ -381,45 +381,23 @@ public sealed class PhysicalCopyTransactionTests
             TestContext.Current.CancellationToken);
         substitution.ReplaceWithForeignBytes(plan.TempPath);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.False(substitution.DeleteSucceeded);
-            Assert.False(substitution.Succeeded);
-            Assert.IsType<IOException>(substitution.DeniedBy);
+        Assert.True(substitution.DeleteSucceeded);
+        Assert.True(substitution.Succeeded);
+        Assert.Null(substitution.DeniedBy);
 
-            await transaction.SealVerifiedAsync(
+        IOException exception = await Assert.ThrowsAsync<IOException>(
+            () => transaction.SealVerifiedAsync(
                 media,
-                TestContext.Current.CancellationToken);
+                TestContext.Current.CancellationToken));
 
-            Assert.True(File.Exists(plan.TempPath));
-        }
-        else
-        {
-            Assert.True(substitution.DeleteSucceeded);
-            Assert.True(substitution.Succeeded);
-            Assert.Null(substitution.DeniedBy);
-
-            IOException exception = await Assert.ThrowsAsync<IOException>(
-                () => transaction.SealVerifiedAsync(
-                    media,
-                    TestContext.Current.CancellationToken));
-
-            Assert.Contains("所有权", exception.Message);
-            Assert.Equal(
-                [9, 8, 7],
-                await File.ReadAllBytesAsync(
-                    plan.TempPath,
-                    TestContext.Current.CancellationToken));
-            Assert.False(File.Exists(plan.FinalPath));
-        }
-
+        Assert.Contains("所有权", exception.Message);
         await transaction.RollbackAsync(media);
-
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.False(File.Exists(plan.TempPath));
-            Assert.False(File.Exists(plan.FinalPath));
-        }
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
+        Assert.False(File.Exists(plan.FinalPath));
     }
 
     [Fact]
@@ -500,7 +478,7 @@ public sealed class PhysicalCopyTransactionTests
     }
 
     [Fact]
-    public async Task Rollback_substitution_is_blocked_on_Windows_or_preserved_elsewhere()
+    public async Task Rollback_preserves_a_replaced_foreign_temp_on_every_host()
     {
         using var workspace = new TemporaryWorkspace();
         OutputPlanItem plan = workspace.CreatePlan([1, 2, 3]);
@@ -514,24 +492,14 @@ public sealed class PhysicalCopyTransactionTests
 
         await transaction.RollbackAsync(media);
 
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.False(substitution.DeleteSucceeded);
-            Assert.False(substitution.Succeeded);
-            Assert.IsType<IOException>(substitution.DeniedBy);
-            Assert.False(File.Exists(plan.TempPath));
-        }
-        else
-        {
-            Assert.True(substitution.DeleteSucceeded);
-            Assert.True(substitution.Succeeded);
-            Assert.Null(substitution.DeniedBy);
-            Assert.Equal(
-                [9, 8, 7],
-                await File.ReadAllBytesAsync(
-                    plan.TempPath,
-                    TestContext.Current.CancellationToken));
-        }
+        Assert.True(substitution.DeleteSucceeded);
+        Assert.True(substitution.Succeeded);
+        Assert.Null(substitution.DeniedBy);
+        Assert.Equal(
+            [9, 8, 7],
+            await File.ReadAllBytesAsync(
+                plan.TempPath,
+                TestContext.Current.CancellationToken));
 
         Assert.True(File.Exists(plan.SourcePath));
         Assert.False(File.Exists(plan.FinalPath));

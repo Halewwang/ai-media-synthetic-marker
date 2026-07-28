@@ -201,6 +201,11 @@ public sealed class PhysicalCopyTransaction : IFileTransaction
             _ownedTemps.Remove(media.OwnershipToken);
             try
             {
+                if (!owned.LockOwnedPathForFinalization())
+                {
+                    return Task.CompletedTask;
+                }
+
                 _atRollbackBoundary?.Invoke(media.WorkingPath);
                 owned.DeleteOwnedLease();
             }

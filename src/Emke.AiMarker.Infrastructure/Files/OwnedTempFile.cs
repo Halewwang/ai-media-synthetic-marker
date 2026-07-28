@@ -82,7 +82,7 @@ internal sealed class OwnedTempFile : IDisposable
         lease.Flush(flushToDisk: true);
         if (OperatingSystem.IsWindows())
         {
-            TransitionToExifToolLease();
+            ReleaseLeaseForExifTool();
             return;
         }
 
@@ -132,6 +132,11 @@ internal sealed class OwnedTempFile : IDisposable
 
     public bool StillOwnsVerifiedPath() =>
         _verified && StillOwnsCurrentPath();
+
+    public bool LockOwnedPathForFinalization() =>
+        OperatingSystem.IsWindows()
+            ? TryLockWindowsFinalizationLease()
+            : StillOwnsCurrentPath();
 
     public void RenameVerifiedTo(string finalPath)
     {
@@ -297,26 +302,11 @@ internal sealed class OwnedTempFile : IDisposable
             isAsync: false);
     }
 
-    private void TransitionToExifToolLease()
+    private void ReleaseLeaseForExifTool()
     {
         _lease?.Dispose();
         _lease = null;
         _leaseCanDelete = false;
-
-        FileStream lease = OpenWindowsExistingLease(
-            Path,
-            GenericRead,
-            FileAccess.Read,
-            "无法为 ExifTool 保持临时文件所有权");
-        FileIdentity identity = CaptureIdentity(lease.SafeFileHandle);
-        if (identity != _identity)
-        {
-            lease.Dispose();
-            throw new IOException(
-                "复制完成后的临时文件所有权无法证明，可能已被替换。");
-        }
-
-        _lease = lease;
     }
 
     private bool TryLockWindowsFinalizationLease()
@@ -375,35 +365,6 @@ internal sealed class OwnedTempFile : IDisposable
         }
 
         return lease;
-    }
-
-    private static FileStream OpenWindowsExistingLease(
-        string path,
-        uint desiredAccess,
-        FileAccess streamAccess,
-        string operation)
-    {
-        SafeFileHandle handle = CreateFile(
-            ToExtendedWindowsPath(path),
-            desiredAccess,
-            FileShareRead | FileShareWrite,
-            IntPtr.Zero,
-            OpenExisting,
-            FileAttributeNormal,
-            IntPtr.Zero);
-        if (handle.IsInvalid)
-        {
-            int error = Marshal.GetLastPInvokeError();
-            handle.Dispose();
-            throw new IOException(
-                $"{operation}，Windows 错误 {error}：{path}");
-        }
-
-        return new FileStream(
-            handle,
-            streamAccess,
-            bufferSize: 4096,
-            isAsync: false);
     }
 
     private void RenameWindowsLease(string finalPath)
