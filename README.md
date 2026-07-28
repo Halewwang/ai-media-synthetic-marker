@@ -13,9 +13,11 @@ XMP-dc:Subject
 它不会识别或判断媒体是否包含 AI 生成人物；选择哪些媒体使用此标记始终由使用者
 决定。
 
-> 当前状态：v2 仍是内部预览和源码状态。仓库已具备 .NET 10 源码、测试与 Windows
-> 发布流水线，但当前 macOS 开发机不能证明 Windows 真实 UI、暂存包自检、ZIP、
-> 代码签名或公开发布可用。请勿把源码或 CI 配置理解为 GitHub Release 已可下载。
+> 当前状态：v2.0.0 是未签名内部预览。Windows 发布流水线已在 `windows-2022`
+> 上完成锁定工具链、完整 solution test、stage 自检和便携 ZIP 构建，并通过
+> [GitHub Releases](https://github.com/Halewwang/ai-media-synthetic-marker/releases)
+> 提供下载。这些证据不等于 Windows 11 x64 真实机器 UI、拖放、SmartScreen 或
+> 安装验收；具体边界见 [BUILDING.md](BUILDING.md)。
 
 ## 使用方式
 
