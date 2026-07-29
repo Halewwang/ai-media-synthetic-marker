@@ -84,7 +84,7 @@ MP4 正确写入后，Windows“属性 → 详细信息 → 标记”仍可能�
 
 请一起保留：
 
-emke-ai-marker-v2.0.0-windows-x64/
+emke-ai-marker-v2.0.1-windows-x64/
 ├─ EMKE AI Marker.exe
 ├─ exiftool/
 ├─ exiftool.lock.json

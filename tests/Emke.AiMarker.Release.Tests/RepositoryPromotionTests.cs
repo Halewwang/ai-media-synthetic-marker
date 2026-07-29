@@ -281,7 +281,7 @@ public sealed partial class RepositoryPromotionTests
         XDocument document = XDocument.Load(
             PathInRepository("Directory.Build.props"));
         Assert.Equal(
-            "2.0.0",
+            "2.0.1",
             document.Descendants("Version").Single().Value);
     }
 

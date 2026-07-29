@@ -109,7 +109,7 @@ public sealed record PackageResult(
 
 public sealed class PackageCommand
 {
-    public const string RootName = "emke-ai-marker-v2.0.0-windows-x64";
+    public const string RootName = "emke-ai-marker-v2.0.1-windows-x64";
     public const string ZipName = $"{RootName}.zip";
     private const string ChecksumName = "SHA256SUMS.txt";
     private static readonly UTF8Encoding Utf8 = new(
@@ -345,7 +345,7 @@ public sealed class PackageCommand
             .ToArray();
         string[] expected =
         [
-            "AppVersion=2.0.0",
+            "AppVersion=2.0.1",
             "Runtime=.NET 10",
             "ExifTool=13.59",
             "Result=ok",
@@ -353,7 +353,7 @@ public sealed class PackageCommand
         if (!lines.SequenceEqual(expected, StringComparer.Ordinal))
         {
             throw new ReleaseToolException(
-                "应用自检报告未包含精确的 2.0.0/.NET 10/ExifTool 13.59/Result=ok 结果。");
+                "应用自检报告未包含精确的 2.0.1/.NET 10/ExifTool 13.59/Result=ok 结果。");
         }
     }
 
@@ -367,7 +367,7 @@ public sealed class PackageCommand
             .ToArray();
         string[] expected =
         [
-            "AppVersion=2.0.0",
+            "AppVersion=2.0.1",
             "MainWindow=shown",
             "Result=ok",
         ];

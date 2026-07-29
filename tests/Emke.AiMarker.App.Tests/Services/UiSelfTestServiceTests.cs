@@ -37,7 +37,7 @@ public sealed class UiSelfTestServiceTests : IDisposable
         string success = Path.Combine(root, "success.txt");
         UiSelfTestReport.WriteSuccess(success);
         Assert.Equal(
-            ["AppVersion=2.0.0", "MainWindow=shown", "Result=ok"],
+            ["AppVersion=2.0.1", "MainWindow=shown", "Result=ok"],
             File.ReadAllLines(success));
 
         string failure = Path.Combine(root, "failure.txt");

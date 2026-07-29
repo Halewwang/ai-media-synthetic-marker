@@ -63,7 +63,7 @@ public static class UiSelfTestReport
         WriteAtomically(
             reportPath,
             [
-                "AppVersion=2.0.0",
+                "AppVersion=2.0.1",
                 "MainWindow=shown",
                 "Result=ok",
             ]);

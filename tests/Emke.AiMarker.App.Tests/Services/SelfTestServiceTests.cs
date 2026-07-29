@@ -57,7 +57,7 @@ public sealed class SelfTestServiceTests : IDisposable
         Assert.Equal(1, validatorCalls);
         Assert.Equal(
             [
-                "AppVersion=2.0.0",
+                "AppVersion=2.0.1",
                 "Runtime=.NET 10",
                 "ExifTool=13.59",
                 "Result=ok",

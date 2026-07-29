@@ -92,7 +92,7 @@ public sealed class PackageCommandTests
         Directory.CreateDirectory(dist);
         string oldZip = System.IO.Path.Combine(
             dist,
-            "emke-ai-marker-v2.0.0-windows-x64.zip");
+            "emke-ai-marker-v2.0.1-windows-x64.zip");
         File.WriteAllText(oldZip, "old");
         File.WriteAllText(System.IO.Path.Combine(dist, "SHA256SUMS.txt"), "old");
         var process = new RecordingPackageProcess
@@ -188,7 +188,7 @@ public sealed class PackageCommandTests
         string external = temp.CreateDirectory("external-output/dist");
         string zip = System.IO.Path.Combine(
             external,
-            "emke-ai-marker-v2.0.0-windows-x64.zip");
+            "emke-ai-marker-v2.0.1-windows-x64.zip");
         string checksum = System.IO.Path.Combine(external, "SHA256SUMS.txt");
         File.WriteAllText(zip, "outside zip");
         File.WriteAllText(checksum, "outside checksum");
@@ -223,7 +223,7 @@ public sealed class PackageCommandTests
         string external = temp.CreateDirectory("external-dist");
         string zip = System.IO.Path.Combine(
             external,
-            "emke-ai-marker-v2.0.0-windows-x64.zip");
+            "emke-ai-marker-v2.0.1-windows-x64.zip");
         string checksum = System.IO.Path.Combine(external, "SHA256SUMS.txt");
         byte[] zipSentinel = [0x45, 0x4d, 0x4b, 0x45, 0x00, 0xff];
         byte[] checksumSentinel = [0x53, 0x48, 0x41, 0x32, 0x35, 0x36];
@@ -254,7 +254,7 @@ public sealed class PackageCommandTests
         Assert.Equal(zipSentinel, File.ReadAllBytes(zip));
         Assert.Equal(checksumSentinel, File.ReadAllBytes(checksum));
         Assert.Equal(
-            ["SHA256SUMS.txt", "emke-ai-marker-v2.0.0-windows-x64.zip"],
+            ["SHA256SUMS.txt", "emke-ai-marker-v2.0.1-windows-x64.zip"],
             Directory.EnumerateFiles(external)
                 .Select(path => System.IO.Path.GetFileName(path)!)
                 .Order(StringComparer.Ordinal)
@@ -291,7 +291,7 @@ public sealed class PackageCommandTests
         Assert.False(File.Exists(
             System.IO.Path.Combine(
                 dist,
-                "emke-ai-marker-v2.0.0-windows-x64.zip")));
+                "emke-ai-marker-v2.0.1-windows-x64.zip")));
         Assert.False(File.Exists(
             System.IO.Path.Combine(dist, "SHA256SUMS.txt")));
     }

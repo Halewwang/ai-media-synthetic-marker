@@ -15,7 +15,7 @@ internal static class ReleaseFixtures
             {
               "schema_version": 1,
               "product": "EMKE AI Marker",
-              "version": "2.0.0",
+              "version": "2.0.1",
               "platform": "windows-x64",
               "required_paths": [
                 "EMKE AI Marker.exe",
@@ -200,12 +200,12 @@ internal sealed class RecordingPackageProcess : IPackageProcessRunner
                 arguments[reportIndex + 1],
                 isUiSelfTest
                     ? """
-                      AppVersion=2.0.0
+                      AppVersion=2.0.1
                       MainWindow=shown
                       Result=ok
                       """
                     : """
-                      AppVersion=2.0.0
+                      AppVersion=2.0.1
                       Runtime=.NET 10
                       ExifTool=13.59
                       Result=ok
