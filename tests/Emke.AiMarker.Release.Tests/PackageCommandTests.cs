@@ -51,10 +51,21 @@ public sealed class PackageCommandTests
         Assert.Equal(
             $"{result.Sha256}  {System.IO.Path.GetFileName(result.ZipPath)}\n",
             File.ReadAllText(result.ChecksumPath));
-        Assert.EndsWith("EMKE AI Marker.exe", process.Executable, StringComparison.Ordinal);
-        Assert.Equal("--self-test", process.Arguments![0]);
-        Assert.Equal("--report", process.Arguments[1]);
-        Assert.True(System.IO.Path.IsPathFullyQualified(process.Arguments[2]));
+        Assert.Equal(2, process.Calls.Count);
+        Assert.EndsWith(
+            "EMKE AI Marker.exe",
+            process.Calls[0].Executable,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            ["--self-test", "--report"],
+            process.Calls[0].Arguments.Take(2));
+        Assert.Equal(
+            ["--ui-self-test", "--report"],
+            process.Calls[1].Arguments.Take(2));
+        Assert.All(
+            process.Calls,
+            call => Assert.True(System.IO.Path.IsPathFullyQualified(
+                call.Arguments[2])));
     }
 
     [Fact]
@@ -164,7 +175,7 @@ public sealed class PackageCommandTests
                 1_700_000_000,
                 CancellationToken.None));
 
-        Assert.Null(process.Executable);
+        Assert.Empty(process.Calls);
         Assert.True(File.Exists(
             System.IO.Path.Combine(external, "EMKE AI Marker.exe")));
     }
@@ -198,7 +209,7 @@ public sealed class PackageCommandTests
                 1_700_000_000,
                 CancellationToken.None));
 
-        Assert.Null(process.Executable);
+        Assert.Empty(process.Calls);
         Assert.Equal("outside zip", File.ReadAllText(zip));
         Assert.Equal("outside checksum", File.ReadAllText(checksum));
     }
