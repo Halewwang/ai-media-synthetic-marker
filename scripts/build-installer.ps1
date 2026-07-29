@@ -260,8 +260,9 @@ try {
         $candidateFiles[0].FullName -ne $candidateSetup) {
         throw "Expected exactly one compiled Setup: $candidateSetup"
     }
-    if ([string]$candidateFiles[0].VersionInfo.FileVersion -cne '2.0.1.0') {
-        throw "Setup file version must be exactly 2.0.1.0."
+    $setupFileVersion = ([string]$candidateFiles[0].VersionInfo.FileVersion).Trim()
+    if ($setupFileVersion -cne '2.0.1.0') {
+        throw "Setup file version must be exactly 2.0.1.0; actual: $setupFileVersion"
     }
 
     Invoke-CheckedProcess `

@@ -65,6 +65,10 @@ public sealed class BuildReleaseScriptContractTests
             "--ui-self-test",
             installerBuildScript,
             StringComparison.Ordinal);
+        Assert.Contains(
+            "VersionInfo.FileVersion).Trim()",
+            installerBuildScript,
+            StringComparison.Ordinal);
         Assert.Contains("unins*.exe", installerBuildScript, StringComparison.Ordinal);
         Assert.Contains(
             "SHA256SUMS.txt",
