@@ -300,6 +300,19 @@ public sealed partial class BrandResourceTests
     }
 
     [Fact]
+    public void Progress_bar_uses_one_way_binding_for_read_only_progress()
+    {
+        XDocument window = XDocument.Load(
+            FromRoot("src", "Emke.AiMarker.App", "MainWindow.xaml"));
+        XElement progress = Assert.Single(
+            window.Descendants(Presentation + "ProgressBar"));
+
+        Assert.Equal(
+            "{Binding ProgressPercent, Mode=OneWay}",
+            (string?)progress.Attribute("Value"));
+    }
+
+    [Fact]
     public void Startup_checks_self_test_before_single_instance_and_window_composition()
     {
         string startup = File.ReadAllText(
