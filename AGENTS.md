@@ -98,11 +98,13 @@ dotnet test Emke.AiMarker.sln -c Release --no-restore
 涉及发布时再在真实 Windows x64 上运行：
 
 ```powershell
-pwsh scripts\build-release.ps1
+pwsh scripts\build-release.ps1 `
+  -InnoCompiler "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 ```
 
 普通源码改动至少运行相关测试；涉及 ExifTool、事务、Integration、构建、打包、
-运行时定位、许可证或发布卫生时，应运行相应完整门禁。macOS 上的
+安装器、运行时定位、许可证或发布卫生时，应使用锁定的 Inno Setup 6.7.3 并运行
+相应完整门禁。macOS 上的
 `EnableWindowsTargeting` 交叉构建不等于 Windows 运行验收。
 
 ## 受控 fixture

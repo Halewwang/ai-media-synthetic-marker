@@ -13,11 +13,10 @@ XMP-dc:Subject
 它不会识别或判断媒体是否包含 AI 生成人物；选择哪些媒体使用此标记始终由使用者
 决定。
 
-> 当前状态：v2.0.0 是未签名内部预览。Windows 发布流水线已在 `windows-2022`
-> 上完成锁定工具链、完整 solution test、stage 自检和便携 ZIP 构建，并通过
-> [GitHub Releases](https://github.com/Halewwang/ai-media-synthetic-marker/releases)
-> 提供下载。这些证据不等于 Windows 11 x64 真实机器 UI、拖放、SmartScreen 或
-> 安装验收；具体边界见 [BUILDING.md](BUILDING.md)。
+> 当前状态：v2.0.1 是未签名内部预览候选。Windows 发布流水线会从同一个已验证
+> stage 生成便携 ZIP 和按当前用户安装的 Setup，并执行真实窗口自检及临时
+> 安装/卸载门禁。这些自动化证据不等于 Windows 11 x64 真实机器 UI、拖放、
+> SmartScreen 或交互式安装验收；具体边界见 [BUILDING.md](BUILDING.md)。
 
 ## 使用方式
 
@@ -30,6 +29,15 @@ XMP-dc:Subject
 
 支持扩展名为 `.jpg`、`.jpeg`、`.png`、`.mp4`，不区分大小写。文件夹会递归扫描
 并稳定排序；符号链接、联接点和其他重解析点不会被跟随。
+
+### 安装版与便携版
+
+- Setup 按当前用户安装到 `%LocalAppData%\Programs\EMKE AI Marker`，不要求管理员
+  权限；它创建开始菜单快捷方式，并把桌面快捷方式作为默认不勾选的可选项。
+- 可在 Windows“已安装的应用”或开始菜单中的卸载入口移除安装版。
+- 便携 ZIP 需要完整解压后运行，不能只复制一个 EXE。
+- 两种交付物当前均未代码签名，SmartScreen 可能显示未知发布者；应先核对
+  `SHA256SUMS.txt`，再决定是否继续。
 
 ### 默认：安全副本
 
@@ -76,7 +84,8 @@ CSV 运行记录；这是该模式唯一允许的输出。CSV 可能包含相对
 - Windows x64；
 - `global.json` 锁定的 .NET SDK 10.0.100；
 - PowerShell 7；
-- `packaging/exiftool.lock.json` 锁定的 ExifTool 13.59。
+- `packaging/exiftool.lock.json` 锁定的 ExifTool 13.59；
+- 构建安装包时使用 `packaging/inno-setup.lock.json` 锁定的 Inno Setup 6.7.3。
 
 在 Windows PowerShell 7 中：
 

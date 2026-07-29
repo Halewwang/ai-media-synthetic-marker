@@ -11,7 +11,8 @@
 - `global.json` 指定的 .NET SDK 10.0.100；
 - PowerShell 7（`pwsh`）；
 - Git；
-- `packaging/exiftool.lock.json` 锁定的 Windows x64 ExifTool 13.59。
+- `packaging/exiftool.lock.json` 锁定的 Windows x64 ExifTool 13.59；
+- `packaging/inno-setup.lock.json` 锁定的 Inno Setup 6.7.3。
 
 仓库脚本不会擅自安装 .NET SDK、PowerShell 或其他缺失工具。若环境不完整，应停止
 并说明缺少项，得到维护者确认后再安装。日常构建不需要 Visual Studio、Node.js、
@@ -97,13 +98,18 @@ dotnet build Emke.AiMarker.sln -c Release --no-restore
 但不能运行 Windows UI 或 Windows 专用行为。交叉 publish 也不等于 Windows
 暂存包自检通过。
 
-## 6. 构建便携 ZIP
+## 6. 构建便携 ZIP 与按用户安装包
 
 在满足前述条件的 Windows x64 PowerShell 7 环境中执行：
 
 ```powershell
-pwsh scripts\build-release.ps1
+pwsh scripts\build-release.ps1 `
+  -InnoCompiler "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 ```
+
+`ISCC.exe` 必须来自官方 Inno Setup 6.7.3 安装程序；下载文件的长度、SHA-256
+和 Authenticode 发布者必须与 `packaging/inno-setup.lock.json` 一致。Inno Setup
+只用于维护者构建，最终用户不需要安装它。
 
 脚本顺序固定为：
 
@@ -112,14 +118,18 @@ pwsh scripts\build-release.ps1
 3. 设置 `EMKE_EXIFTOOL` 并运行完整 Release solution test；
 4. self-contained `win-x64` publish；
 5. 以白名单组装 stage；
-6. 在 Windows 上执行 stage 内 `EMKE AI Marker.exe --self-test`；
-7. 再次验证 stage，生成确定性 ZIP 和 `SHA256SUMS.txt`。
+6. 在 Windows 上执行 stage 内 headless self-test 和真实窗口 UI self-test；
+7. 再次验证 stage，并从同一个 stage 生成确定性 ZIP；
+8. 编译按当前用户安装的 Setup，静默安装到临时目录并逐文件比对 stage；
+9. 对已安装程序执行 headless 与 UI self-test，再静默卸载；
+10. 为 ZIP 和 Setup 重新生成一个双行 `SHA256SUMS.txt`。
 
 成功输出应为：
 
 ```text
 dist/
-├─ emke-ai-marker-v2.0.0-windows-x64.zip
+├─ emke-ai-marker-v2.0.1-windows-x64.zip
+├─ emke-ai-marker-v2.0.1-windows-x64-setup.exe
 └─ SHA256SUMS.txt
 ```
 
@@ -128,7 +138,8 @@ dist/
 都不得提交。
 
 macOS 上可以验证 release tool 单元测试、部分交叉编译和交叉 publish；由于无法执行
-Windows stage self-test，不能据此声称 ZIP 已完成 Windows 验收。
+Windows stage、安装和 UI self-test，不能据此声称 ZIP 或 Setup 已完成 Windows
+真实机器验收。
 
 ## 7. 签名与 Windows 验收
 
@@ -138,6 +149,7 @@ Windows stage self-test，不能据此声称 ZIP 已完成 Windows 验收。
 - SmartScreen 不会警告；
 - Windows 11 x64 真实机器 UI、拖放、长路径、中文路径和文件属性已接受；
 - ZIP 已在干净 Windows 环境解压并完成端到端试用；
+- Setup 的交互式安装、开始菜单、可选桌面快捷方式和控制面板卸载已人工接受；
 - 已创建公开 GitHub Release。
 
 这些是后续 Windows acceptance 与发布门禁，必须分别留下真实设备证据。
