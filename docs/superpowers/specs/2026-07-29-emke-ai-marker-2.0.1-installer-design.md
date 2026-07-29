@@ -175,7 +175,8 @@ dotnet restore Emke.AiMarker.sln --locked-mode
 pwsh scripts\fetch-exiftool.ps1
 $env:EMKE_EXIFTOOL = (Resolve-Path .\runtime\exiftool\exiftool.exe)
 dotnet test Emke.AiMarker.sln -c Release --no-restore
-pwsh scripts\build-release.ps1 -InnoCompiler <absolute-path-to-ISCC.exe>
+pwsh scripts\build-release.ps1 `
+  -InnoCompiler "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 ```
 
 最后从 Setup 进行一次全新临时安装、应用双自检和卸载验收，并重新核对产物 SHA-256。
