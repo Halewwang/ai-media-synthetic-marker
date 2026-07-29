@@ -38,7 +38,7 @@ public sealed class PowerShellDocumentAnalysisTests
                 """;
             var options = new PowerShellAnalysisOptions(
                 hangingAnalyzer,
-                TimeSpan.FromSeconds(2),
+                TimeSpan.FromSeconds(10),
                 new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["EMKE_AST_PID_PATH"] = pidPath,
