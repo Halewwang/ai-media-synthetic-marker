@@ -1,7 +1,7 @@
 {
-  "source": "emke-app-logo.svg",
-  "source_width": 202,
-  "source_height": 202,
-  "source_sha256": "c98e5a189b344bd5adb6b49848acdf307ce0f12c4e60a428c4c421fe258142a6",
+  "source": "emke-app-logo.jpg",
+  "source_width": 2500,
+  "source_height": 2500,
+  "source_sha256": "c4d4b4bbff248d5be153d0e26dd2be667a8f28ba043b07a9b5a58bb1001add98",
   "accent": "#36A39E"
 }

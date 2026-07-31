@@ -44,10 +44,10 @@ fixtures; never point these variables at private media:
 
 ```powershell
 $AcceptanceRoot = (Get-Location).Path
-$ZipPath = Join-Path $AcceptanceRoot "emke-ai-marker-v2.0.0-windows-x64.zip"
+$ZipPath = Join-Path $AcceptanceRoot "emke-ai-marker-v2.0.1-windows-x64.zip"
 $ChecksumPath = Join-Path $AcceptanceRoot "SHA256SUMS.txt"
 $ExtractRoot = Join-Path $AcceptanceRoot "extracted"
-$PackageRoot = Join-Path $ExtractRoot "emke-ai-marker-v2.0.0-windows-x64"
+$PackageRoot = Join-Path $ExtractRoot "emke-ai-marker-v2.0.1-windows-x64"
 $FixtureRoot = Join-Path $AcceptanceRoot "controlled-fixtures"
 $AppPath = Join-Path $PackageRoot "EMKE AI Marker.exe"
 $ExifToolPath = Join-Path $PackageRoot "exiftool\exiftool.exe"
@@ -564,6 +564,23 @@ accent render, and keyboard focus stays visible.
 | 100% | record observation | record observation | record observation | record observation | pass/fail/blocked plus evidence |
 | 150% | record observation | record observation | record observation | record observation | pass/fail/blocked plus evidence |
 | 200% | record observation | record observation | record observation | record observation | pass/fail/blocked plus evidence |
+
+## Setup interactive acceptance addendum
+
+The automated release build already installs, hashes, self-tests and uninstalls
+`emke-ai-marker-v2.0.1-windows-x64-setup.exe` in a temporary directory. For
+interactive Setup acceptance on the same real Windows 11 x64 host, also record:
+
+- the Setup filename and SHA-256 match `SHA256SUMS.txt`;
+- installation succeeds without elevation and targets the current user;
+- the Start Menu shortcut is present;
+- the desktop-shortcut option is unchecked by default and works when selected;
+- the installed application reaches its main window;
+- Windows “Installed apps” uninstall removes the application; and
+- the exact observed SmartScreen prompt and publisher, or an explicit
+  `no SmartScreen prompt observed` result.
+
+These Setup observations do not replace the 14 portable-package items above.
 
 ## Final decision and evidence retention
 

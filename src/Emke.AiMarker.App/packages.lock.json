@@ -8,7 +8,7 @@
       "emke.aimarker.infrastructure": {
         "type": "Project",
         "dependencies": {
-          "Emke.AiMarker.Core": "[2.0.0, )"
+          "Emke.AiMarker.Core": "[2.0.1, )"
         }
       }
     },

@@ -18,12 +18,12 @@ public sealed class DeterministicZipWriterTests(ITestOutputHelper output)
         DeterministicZipWriter.Write(
             stage,
             first,
-            "emke-ai-marker-v2.0.0-windows-x64",
+            "emke-ai-marker-v2.0.1-windows-x64",
             1_700_000_000);
         DeterministicZipWriter.Write(
             stage,
             second,
-            "emke-ai-marker-v2.0.0-windows-x64",
+            "emke-ai-marker-v2.0.1-windows-x64",
             1_700_000_000);
 
         string firstHash = Convert.ToHexString(
@@ -39,11 +39,11 @@ public sealed class DeterministicZipWriterTests(ITestOutputHelper output)
         Assert.All(
             names,
             name => Assert.StartsWith(
-                "emke-ai-marker-v2.0.0-windows-x64/",
+                "emke-ai-marker-v2.0.1-windows-x64/",
                 name,
                 StringComparison.Ordinal));
         Assert.Contains(
-            "emke-ai-marker-v2.0.0-windows-x64/示例输出/EMKE 已标记/",
+            "emke-ai-marker-v2.0.1-windows-x64/示例输出/EMKE 已标记/",
             names);
     }
 
@@ -90,7 +90,7 @@ public sealed class DeterministicZipWriterTests(ITestOutputHelper output)
             () => DeterministicZipWriter.Write(
                 stage,
                 output,
-                "emke-ai-marker-v2.0.0-windows-x64",
+                "emke-ai-marker-v2.0.1-windows-x64",
                 1_700_000_000));
         Assert.False(File.Exists(output));
     }

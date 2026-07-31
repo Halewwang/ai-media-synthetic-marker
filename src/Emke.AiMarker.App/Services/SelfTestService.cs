@@ -87,7 +87,7 @@ public static class SelfTestArguments
 public sealed class SelfTestService
 {
     private const string ExpectedExifToolVersion = "13.59";
-    private static readonly Version ExpectedAssemblyVersion = new(2, 0, 0, 0);
+    private static readonly Version ExpectedAssemblyVersion = new(2, 0, 1, 0);
     private static readonly UTF8Encoding Utf8 = new(
         encoderShouldEmitUTF8Identifier: false,
         throwOnInvalidBytes: true);
@@ -162,7 +162,7 @@ public sealed class SelfTestService
             await WriteReportAtomicallyAsync(
                 normalizedReport,
                 [
-                    "AppVersion=2.0.0",
+                    "AppVersion=2.0.1",
                     "Runtime=.NET 10",
                     "ExifTool=13.59",
                     "Result=ok",

@@ -109,7 +109,7 @@ public sealed record PackageResult(
 
 public sealed class PackageCommand
 {
-    public const string RootName = "emke-ai-marker-v2.0.0-windows-x64";
+    public const string RootName = "emke-ai-marker-v2.0.1-windows-x64";
     public const string ZipName = $"{RootName}.zip";
     private const string ChecksumName = "SHA256SUMS.txt";
     private static readonly UTF8Encoding Utf8 = new(
@@ -173,7 +173,12 @@ public sealed class PackageCommand
         Directory.CreateDirectory(operationRoot);
         EnsureNoReparseComponents(root, operationRoot, "package 工作目录");
         string candidateStage = Path.Combine(operationRoot, RootName);
-        string reportPath = Path.Combine(operationRoot, "self-test.txt");
+        string headlessReportPath = Path.Combine(
+            operationRoot,
+            "self-test.txt");
+        string uiReportPath = Path.Combine(
+            operationRoot,
+            "ui-self-test.txt");
         string finalStageParent = Path.Combine(build, "stage");
         string finalStage = Path.Combine(finalStageParent, RootName);
 
@@ -189,18 +194,30 @@ public sealed class PackageCommand
             string executable = Path.Combine(
                 candidateStage,
                 "EMKE AI Marker.exe");
-            int exitCode = await processRunner.RunAsync(
+            int headlessExitCode = await processRunner.RunAsync(
                 executable,
-                ["--self-test", "--report", reportPath],
+                ["--self-test", "--report", headlessReportPath],
                 candidateStage,
                 cancellationToken);
-            if (exitCode != 0)
+            if (headlessExitCode != 0)
             {
                 throw new ReleaseToolException(
-                    $"发布包自检失败，退出码 {exitCode}。");
+                    $"发布包自检失败，退出码 {headlessExitCode}。");
             }
 
-            ValidateSelfTestReport(reportPath);
+            ValidateSelfTestReport(headlessReportPath);
+            int uiExitCode = await processRunner.RunAsync(
+                executable,
+                ["--ui-self-test", "--report", uiReportPath],
+                candidateStage,
+                cancellationToken);
+            if (uiExitCode != 0)
+            {
+                throw new ReleaseToolException(
+                    $"UI self-test failed with exit code {uiExitCode}.");
+            }
+
+            ValidateUiSelfTestReport(uiReportPath);
             EnsureExistingOutputDirectorySafe(root, output);
             ReleaseStageValidator.Validate(candidateStage, manifestPath);
             Directory.CreateDirectory(finalStageParent);
@@ -328,7 +345,7 @@ public sealed class PackageCommand
             .ToArray();
         string[] expected =
         [
-            "AppVersion=2.0.0",
+            "AppVersion=2.0.1",
             "Runtime=.NET 10",
             "ExifTool=13.59",
             "Result=ok",
@@ -336,7 +353,28 @@ public sealed class PackageCommand
         if (!lines.SequenceEqual(expected, StringComparer.Ordinal))
         {
             throw new ReleaseToolException(
-                "应用自检报告未包含精确的 2.0.0/.NET 10/ExifTool 13.59/Result=ok 结果。");
+                "应用自检报告未包含精确的 2.0.1/.NET 10/ExifTool 13.59/Result=ok 结果。");
+        }
+    }
+
+    private static void ValidateUiSelfTestReport(string reportPath)
+    {
+        ReleaseStageValidator.EnsureOrdinaryFile(
+            reportPath,
+            "应用 UI 自检报告");
+        string[] lines = File.ReadAllLines(reportPath, Utf8)
+            .Where(line => line.Length > 0)
+            .ToArray();
+        string[] expected =
+        [
+            "AppVersion=2.0.1",
+            "MainWindow=shown",
+            "Result=ok",
+        ];
+        if (!lines.SequenceEqual(expected, StringComparer.Ordinal))
+        {
+            throw new ReleaseToolException(
+                "应用 UI 自检报告未包含精确的 MainWindow=shown/Result=ok 结果。");
         }
     }
 

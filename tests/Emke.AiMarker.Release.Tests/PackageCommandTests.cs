@@ -51,10 +51,21 @@ public sealed class PackageCommandTests
         Assert.Equal(
             $"{result.Sha256}  {System.IO.Path.GetFileName(result.ZipPath)}\n",
             File.ReadAllText(result.ChecksumPath));
-        Assert.EndsWith("EMKE AI Marker.exe", process.Executable, StringComparison.Ordinal);
-        Assert.Equal("--self-test", process.Arguments![0]);
-        Assert.Equal("--report", process.Arguments[1]);
-        Assert.True(System.IO.Path.IsPathFullyQualified(process.Arguments[2]));
+        Assert.Equal(2, process.Calls.Count);
+        Assert.EndsWith(
+            "EMKE AI Marker.exe",
+            process.Calls[0].Executable,
+            StringComparison.Ordinal);
+        Assert.Equal(
+            ["--self-test", "--report"],
+            process.Calls[0].Arguments.Take(2));
+        Assert.Equal(
+            ["--ui-self-test", "--report"],
+            process.Calls[1].Arguments.Take(2));
+        Assert.All(
+            process.Calls,
+            call => Assert.True(System.IO.Path.IsPathFullyQualified(
+                call.Arguments[2])));
     }
 
     [Fact]
@@ -81,7 +92,7 @@ public sealed class PackageCommandTests
         Directory.CreateDirectory(dist);
         string oldZip = System.IO.Path.Combine(
             dist,
-            "emke-ai-marker-v2.0.0-windows-x64.zip");
+            "emke-ai-marker-v2.0.1-windows-x64.zip");
         File.WriteAllText(oldZip, "old");
         File.WriteAllText(System.IO.Path.Combine(dist, "SHA256SUMS.txt"), "old");
         var process = new RecordingPackageProcess
@@ -164,7 +175,7 @@ public sealed class PackageCommandTests
                 1_700_000_000,
                 CancellationToken.None));
 
-        Assert.Null(process.Executable);
+        Assert.Empty(process.Calls);
         Assert.True(File.Exists(
             System.IO.Path.Combine(external, "EMKE AI Marker.exe")));
     }
@@ -177,7 +188,7 @@ public sealed class PackageCommandTests
         string external = temp.CreateDirectory("external-output/dist");
         string zip = System.IO.Path.Combine(
             external,
-            "emke-ai-marker-v2.0.0-windows-x64.zip");
+            "emke-ai-marker-v2.0.1-windows-x64.zip");
         string checksum = System.IO.Path.Combine(external, "SHA256SUMS.txt");
         File.WriteAllText(zip, "outside zip");
         File.WriteAllText(checksum, "outside checksum");
@@ -198,7 +209,7 @@ public sealed class PackageCommandTests
                 1_700_000_000,
                 CancellationToken.None));
 
-        Assert.Null(process.Executable);
+        Assert.Empty(process.Calls);
         Assert.Equal("outside zip", File.ReadAllText(zip));
         Assert.Equal("outside checksum", File.ReadAllText(checksum));
     }
@@ -212,7 +223,7 @@ public sealed class PackageCommandTests
         string external = temp.CreateDirectory("external-dist");
         string zip = System.IO.Path.Combine(
             external,
-            "emke-ai-marker-v2.0.0-windows-x64.zip");
+            "emke-ai-marker-v2.0.1-windows-x64.zip");
         string checksum = System.IO.Path.Combine(external, "SHA256SUMS.txt");
         byte[] zipSentinel = [0x45, 0x4d, 0x4b, 0x45, 0x00, 0xff];
         byte[] checksumSentinel = [0x53, 0x48, 0x41, 0x32, 0x35, 0x36];
@@ -243,7 +254,7 @@ public sealed class PackageCommandTests
         Assert.Equal(zipSentinel, File.ReadAllBytes(zip));
         Assert.Equal(checksumSentinel, File.ReadAllBytes(checksum));
         Assert.Equal(
-            ["SHA256SUMS.txt", "emke-ai-marker-v2.0.0-windows-x64.zip"],
+            ["SHA256SUMS.txt", "emke-ai-marker-v2.0.1-windows-x64.zip"],
             Directory.EnumerateFiles(external)
                 .Select(path => System.IO.Path.GetFileName(path)!)
                 .Order(StringComparer.Ordinal)
@@ -280,7 +291,7 @@ public sealed class PackageCommandTests
         Assert.False(File.Exists(
             System.IO.Path.Combine(
                 dist,
-                "emke-ai-marker-v2.0.0-windows-x64.zip")));
+                "emke-ai-marker-v2.0.1-windows-x64.zip")));
         Assert.False(File.Exists(
             System.IO.Path.Combine(dist, "SHA256SUMS.txt")));
     }

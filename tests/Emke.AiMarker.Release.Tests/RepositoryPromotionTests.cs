@@ -63,6 +63,7 @@ public sealed partial class RepositoryPromotionTests
         string agents = Read("AGENTS.md");
         string contributing = Read("CONTRIBUTING.md");
         string runtimeReadme = Read("runtime/exiftool/README.md");
+        string userInstructions = Read("release_template/使用说明.txt");
         string productionDocs = string.Join(
             "\n",
             readme,
@@ -90,6 +91,23 @@ public sealed partial class RepositoryPromotionTests
             "scripts\\build-release.ps1",
             building,
             StringComparison.Ordinal);
+        Assert.Contains("Inno Setup 6.7.3", building, StringComparison.Ordinal);
+        Assert.Contains(
+            "-InnoCompiler \"$env:LOCALAPPDATA\\Programs\\Inno Setup 6\\ISCC.exe\"",
+            building,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "emke-ai-marker-v2.0.1-windows-x64.zip",
+            building,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "emke-ai-marker-v2.0.1-windows-x64-setup.exe",
+            building,
+            StringComparison.Ordinal);
+        Assert.Contains("按当前用户安装", userInstructions, StringComparison.Ordinal);
+        Assert.Contains("桌面快捷方式", userInstructions, StringComparison.Ordinal);
+        Assert.Contains("卸载", userInstructions, StringComparison.Ordinal);
+        Assert.Contains("SmartScreen", userInstructions, StringComparison.Ordinal);
         Assert.Contains(
             "-overwrite_original_in_place",
             agents,
@@ -281,7 +299,7 @@ public sealed partial class RepositoryPromotionTests
         XDocument document = XDocument.Load(
             PathInRepository("Directory.Build.props"));
         Assert.Equal(
-            "2.0.0",
+            "2.0.1",
             document.Descendants("Version").Single().Value);
     }
 

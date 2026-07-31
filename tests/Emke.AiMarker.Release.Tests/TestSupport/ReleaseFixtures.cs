@@ -15,7 +15,7 @@ internal static class ReleaseFixtures
             {
               "schema_version": 1,
               "product": "EMKE AI Marker",
-              "version": "2.0.0",
+              "version": "2.0.1",
               "platform": "windows-x64",
               "required_paths": [
                 "EMKE AI Marker.exe",
@@ -178,9 +178,7 @@ internal sealed class RecordingPackageProcess : IPackageProcessRunner
 
     public bool WriteSuccessfulReport { get; set; } = true;
 
-    public string? Executable { get; private set; }
-
-    public IReadOnlyList<string>? Arguments { get; private set; }
+    public List<PackageProcessCall> Calls { get; } = [];
 
     public Action<string>? MutateWorkingDirectory { get; set; }
 
@@ -190,22 +188,36 @@ internal sealed class RecordingPackageProcess : IPackageProcessRunner
         string workingDirectory,
         CancellationToken cancellationToken)
     {
-        Executable = executable;
-        Arguments = arguments;
+        Calls.Add(new(executable, arguments, workingDirectory));
         int reportIndex = Array.IndexOf(arguments.ToArray(), "--report");
         if (WriteSuccessfulReport && reportIndex >= 0)
         {
+            bool isUiSelfTest = string.Equals(
+                arguments[0],
+                "--ui-self-test",
+                StringComparison.Ordinal);
             File.WriteAllText(
                 arguments[reportIndex + 1],
-                """
-                AppVersion=2.0.0
-                Runtime=.NET 10
-                ExifTool=13.59
-                Result=ok
-                """);
+                isUiSelfTest
+                    ? """
+                      AppVersion=2.0.1
+                      MainWindow=shown
+                      Result=ok
+                      """
+                    : """
+                      AppVersion=2.0.1
+                      Runtime=.NET 10
+                      ExifTool=13.59
+                      Result=ok
+                      """);
         }
 
         MutateWorkingDirectory?.Invoke(workingDirectory);
         return Task.FromResult(ExitCode);
     }
 }
+
+internal sealed record PackageProcessCall(
+    string Executable,
+    IReadOnlyList<string> Arguments,
+    string WorkingDirectory);

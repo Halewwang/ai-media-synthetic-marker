@@ -46,11 +46,13 @@ dotnet test Emke.AiMarker.sln -c Release --no-restore
 涉及构建、发布工具、许可证或工作流时，还应在 Windows 上运行：
 
 ```powershell
-pwsh scripts\build-release.ps1
+pwsh scripts\build-release.ps1 `
+  -InnoCompiler "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
 ```
 
-macOS 交叉编译可作为补充编译证据，但不能替代 Windows UI、stage self-test、ZIP、
-签名或真实机器验收。
+安装器构建使用 `packaging/inno-setup.lock.json` 锁定的官方 Inno Setup 6.7.3。
+macOS 交叉编译可作为补充编译证据，但不能替代 Windows UI、stage self-test、
+ZIP、Setup 安装/卸载、签名或真实机器验收。
 
 ## 提交问题或变更
 

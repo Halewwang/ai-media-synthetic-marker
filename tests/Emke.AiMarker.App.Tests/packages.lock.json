@@ -160,8 +160,8 @@
       "EMKE AI Marker": {
         "type": "Project",
         "dependencies": {
-          "Emke.AiMarker.Core": "[2.0.0, )",
-          "Emke.AiMarker.Infrastructure": "[2.0.0, )"
+          "Emke.AiMarker.Core": "[2.0.1, )",
+          "Emke.AiMarker.Infrastructure": "[2.0.1, )"
         }
       },
       "emke.aimarker.core": {
@@ -170,7 +170,7 @@
       "emke.aimarker.infrastructure": {
         "type": "Project",
         "dependencies": {
-          "Emke.AiMarker.Core": "[2.0.0, )"
+          "Emke.AiMarker.Core": "[2.0.1, )"
         }
       }
     },

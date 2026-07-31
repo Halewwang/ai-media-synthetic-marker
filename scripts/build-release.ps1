@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$DotNet = "dotnet"
+    [string]$DotNet = "dotnet",
+    [string]$InnoCompiler
 )
 
 $ErrorActionPreference = 'Stop'
@@ -107,6 +108,17 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Release packaging failed with exit code $LASTEXITCODE."
     }
+
+    if ([string]::IsNullOrWhiteSpace($InnoCompiler) -or
+        -not [IO.Path]::IsPathFullyQualified($InnoCompiler) -or
+        -not (Test-Path -LiteralPath $InnoCompiler -PathType Leaf)) {
+        throw "InnoCompiler must be a fully-qualified existing ISCC.exe."
+    }
+    & (Join-Path $PSScriptRoot 'build-installer.ps1') `
+        -RepositoryRoot $repoRoot `
+        -StageDirectory (Join-Path $repoRoot 'build/stage/emke-ai-marker-v2.0.1-windows-x64') `
+        -OutputDirectory $outputDirectory `
+        -InnoCompiler $InnoCompiler
 }
 finally {
     $env:EMKE_EXIFTOOL = $previousExifTool

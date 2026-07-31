@@ -231,11 +231,11 @@ public static partial class ReleaseStageValidator
         string platform = RequireString(root, "platform");
         if (schemaVersion != 1
             || !string.Equals(product, "EMKE AI Marker", StringComparison.Ordinal)
-            || !string.Equals(version, "2.0.0", StringComparison.Ordinal)
+            || !string.Equals(version, "2.0.1", StringComparison.Ordinal)
             || !string.Equals(platform, "windows-x64", StringComparison.Ordinal))
         {
             throw new ReleaseToolException(
-                "release manifest 产品、版本或平台不符合 EMKE AI Marker 2.0.0 Windows x64。");
+                "release manifest 产品、版本或平台不符合 EMKE AI Marker 2.0.1 Windows x64。");
         }
 
         if (!root.TryGetProperty("required_paths", out JsonElement required)

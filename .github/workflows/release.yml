@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build portable Windows package
+    name: Build Windows packages
     runs-on: windows-2022
     timeout-minutes: 45
     permissions:
@@ -45,8 +45,8 @@ jobs:
         run: |
           [xml]$props = Get-Content -LiteralPath Directory.Build.props -Raw
           $version = [string]$props.Project.PropertyGroup.Version
-          if ($version -cne '2.0.0') {
-            throw "Directory.Build.props must contain exact v2.0.0; actual: $version"
+          if ($version -cne '2.0.1') {
+            throw "Directory.Build.props must contain exact v2.0.1; actual: $version"
           }
 
           if ($env:IS_TAG_BUILD -ceq 'true') {
@@ -60,16 +60,63 @@ jobs:
             }
           }
 
+      - name: Install locked Inno Setup compiler
+        shell: pwsh
+        run: |
+          $lock = Get-Content -LiteralPath packaging/inno-setup.lock.json -Raw |
+            ConvertFrom-Json
+          if ([string]$lock.version -cne '6.7.3') {
+            throw "Inno Setup lock must require exact version 6.7.3."
+          }
+
+          $installer = Join-Path $env:RUNNER_TEMP $lock.archive_name
+          Invoke-WebRequest -Uri $lock.url -OutFile $installer
+          $item = Get-Item -LiteralPath $installer
+          if ($item.Length -ne [long]$lock.size) {
+            throw "Inno Setup installer size mismatch: $($item.Length)"
+          }
+
+          $hash = (Get-FileHash -LiteralPath $installer -Algorithm SHA256).
+            Hash.ToLowerInvariant()
+          if ($hash -cne [string]$lock.sha256) {
+            throw "Inno Setup installer SHA-256 mismatch: $hash"
+          }
+
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid' -or
+              $signature.SignerCertificate.Subject -notmatch 'Pyrsys B\.V\.') {
+            throw "Inno Setup installer signature or publisher is invalid."
+          }
+
+          $process = Start-Process -FilePath $installer -Wait -PassThru `
+            -ArgumentList @(
+              '/VERYSILENT',
+              '/SUPPRESSMSGBOXES',
+              '/NORESTART',
+              '/CURRENTUSER'
+            )
+          if ($process.ExitCode -ne 0) {
+            throw "Inno Setup install failed with exit code $($process.ExitCode)."
+          }
+
+          $compiler = Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path -LiteralPath $compiler -PathType Leaf)) {
+            throw "ISCC.exe was not installed: $compiler"
+          }
+          "INNO_COMPILER=$compiler" |
+            Out-File -LiteralPath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build and verify release package
         shell: pwsh
-        run: pwsh scripts/build-release.ps1
+        run: pwsh scripts/build-release.ps1 -InnoCompiler $env:INNO_COMPILER
 
       - name: Upload verified workflow artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: emke-ai-marker-windows-${{ github.run_id }}
           path: |
-            dist/emke-ai-marker-v2.0.0-windows-x64.zip
+            dist/emke-ai-marker-v2.0.1-windows-x64.zip
+            dist/emke-ai-marker-v2.0.1-windows-x64-setup.exe
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
@@ -107,8 +154,14 @@ jobs:
             throw "Missing checksum file: $checksumPath"
           }
 
+          $setupPath = Join-Path $PWD 'dist\emke-ai-marker-v2.0.1-windows-x64-setup.exe'
+          if (-not (Test-Path -LiteralPath $setupPath -PathType Leaf)) {
+            throw "Missing Setup installer: $setupPath"
+          }
+
           gh release create $env:RELEASE_TAG `
             $zipFiles[0].FullName `
+            $setupPath `
             $checksumPath `
             --repo $env:GH_REPO `
             --verify-tag `

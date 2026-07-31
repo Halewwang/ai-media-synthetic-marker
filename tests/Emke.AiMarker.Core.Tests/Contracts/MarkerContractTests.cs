@@ -17,10 +17,10 @@ public sealed class MarkerContractTests
     }
 
     [Fact]
-    public void Core_assembly_version_is_2_0_0_0()
+    public void Core_assembly_version_is_2_0_1_0()
     {
         Assert.Equal(
-            new Version(2, 0, 0, 0),
+            new Version(2, 0, 1, 0),
             typeof(MarkerContract).Assembly.GetName().Version);
     }
 

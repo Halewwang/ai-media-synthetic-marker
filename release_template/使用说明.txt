@@ -13,10 +13,22 @@ XMP-dc:Subject
 工具不会识别或判断媒体是否包含 AI 生成人物，不上传媒体、不连接亚马逊，也不发送
 遥测数据。请只添加已经人工判断适用该标记的媒体。
 
-二、开始使用
+二、安装或便携使用
+
+安装版：
+
+1. 运行 `emke-ai-marker-v2.0.1-windows-x64-setup.exe`。安装程序按当前用户安装，
+   不要求管理员权限。
+2. 开始菜单快捷方式会自动创建；“创建桌面快捷方式”默认不勾选，可按需选择。
+3. 可在 Windows“已安装的应用”中卸载 EMKE AI Marker。
+
+便携版：
 
 1. 完整解压 ZIP，保持 EMKE AI Marker.exe 与 exiftool 文件夹的相对位置。
 2. 双击 EMKE AI Marker.exe。
+
+开始处理：
+
 3. 在同一个窗口中点击“添加文件”或“添加文件夹”，也可以把媒体文件或文件夹拖放到
    窗口。
 4. 检查文件列表后，选择：
@@ -84,7 +96,7 @@ MP4 正确写入后，Windows“属性 → 详细信息 → 标记”仍可能�
 
 请一起保留：
 
-emke-ai-marker-v2.0.0-windows-x64/
+emke-ai-marker-v2.0.1-windows-x64/
 ├─ EMKE AI Marker.exe
 ├─ exiftool/
 ├─ exiftool.lock.json
@@ -101,7 +113,7 @@ emke-ai-marker-v2.0.0-windows-x64/
 九、签名、隐私和范围
 
 - 当前内部预览未进行代码签名，Windows SmartScreen 可能显示未知发布者并要求额外
-  确认。
+  确认。安装版和便携版都应先与 `SHA256SUMS.txt` 核对 SHA-256。
 - 工具只处理本机文件，不验证平台上传后的文件。
 - 工具不会判断 AI 内容是否存在。
 - 本项目与 Amazon 无隶属、合作、官方认可或保证关系。

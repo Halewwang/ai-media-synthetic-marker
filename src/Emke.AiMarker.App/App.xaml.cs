@@ -26,12 +26,58 @@ public partial class App : Application
             return;
         }
 
+        bool uiSelfTest = UiSelfTestArguments.IsRequested(e.Args);
+        string uiReportPath = "";
+        if (uiSelfTest
+            && !UiSelfTestArguments.TryParse(
+                e.Args,
+                out uiReportPath,
+                out _))
+        {
+            base.OnStartup(e);
+            Shutdown(1);
+            return;
+        }
+
         base.OnStartup(e);
 
+        if (uiSelfTest)
+        {
+            DispatcherUnhandledException += (_, args) =>
+            {
+                UiSelfTestReport.TryWriteFailure(
+                    uiReportPath,
+                    args.Exception);
+                args.Handled = true;
+                Shutdown(1);
+            };
+        }
+
+        try
+        {
+            ComposeAndShowWindow(uiSelfTest, uiReportPath);
+        }
+        catch (Exception exception) when (uiSelfTest)
+        {
+            UiSelfTestReport.TryWriteFailure(uiReportPath, exception);
+            Shutdown(1);
+        }
+    }
+
+    private void ComposeAndShowWindow(
+        bool uiSelfTest,
+        string uiReportPath)
+    {
         var text = new ResourceAppText();
         singleInstance = new SingleInstanceGuard();
         if (!singleInstance.TryAcquire())
         {
+            if (uiSelfTest)
+            {
+                throw new InvalidOperationException(
+                    "Another application instance is already running.");
+            }
+
             MessageBox.Show(
                 text.Get("AlreadyRunningMessage"),
                 text.Get("AppName"),
@@ -84,6 +130,25 @@ public partial class App : Application
         };
 
         MainWindow = window;
+        if (uiSelfTest)
+        {
+            window.ContentRendered += (_, _) =>
+            {
+                try
+                {
+                    UiSelfTestReport.WriteSuccess(uiReportPath);
+                    Shutdown(0);
+                }
+                catch (Exception exception)
+                {
+                    UiSelfTestReport.TryWriteFailure(
+                        uiReportPath,
+                        exception);
+                    Shutdown(1);
+                }
+            };
+        }
+
         window.Show();
     }
 
