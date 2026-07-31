@@ -65,6 +65,7 @@ __pypackages__/
 *.[pP][nN][gG]
 *.[mM][pP]4
 *.[cC][sS][vV]
+!/assets/branding/emke-app-logo.jpg
 !docs/assets/**/*.[pP][nN][gG]
 !/tests/fixtures/
 !/tests/fixtures/controlled/

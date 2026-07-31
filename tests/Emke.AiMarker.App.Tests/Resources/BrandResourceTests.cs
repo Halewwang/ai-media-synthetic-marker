@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Xml.Linq;
 using Emke.AiMarker.App.Tests.TestSupport;
@@ -18,25 +19,30 @@ public sealed partial class BrandResourceTests
     [Fact]
     public void Brand_source_hash_dimensions_and_manifest_match_approved_asset()
     {
-        string svgPath = FromRoot("assets", "branding", "emke-app-logo.svg");
-        byte[] svgBytes = File.ReadAllBytes(svgPath);
-        string svgText = File.ReadAllText(svgPath);
+        string sourcePath = FromRoot("assets", "branding", "emke-app-logo.jpg");
+        byte[] sourceBytes = File.ReadAllBytes(sourcePath);
 
         Assert.Equal(
-            "c98e5a189b344bd5adb6b49848acdf307ce0f12c4e60a428c4c421fe258142a6",
-            Convert.ToHexString(SHA256.HashData(svgBytes)).ToLowerInvariant());
-        Assert.Contains("width=\"202\"", svgText, StringComparison.Ordinal);
-        Assert.Contains("height=\"202\"", svgText, StringComparison.Ordinal);
-        Assert.Contains("#36A39E", svgText, StringComparison.Ordinal);
+            "c4d4b4bbff248d5be153d0e26dd2be667a8f28ba043b07a9b5a58bb1001add98",
+            Convert.ToHexString(SHA256.HashData(sourceBytes)).ToLowerInvariant());
+        using (var stream = new MemoryStream(sourceBytes))
+        {
+            BitmapFrame frame = BitmapDecoder.Create(
+                stream,
+                BitmapCreateOptions.PreservePixelFormat,
+                BitmapCacheOption.OnLoad).Frames.Single();
+            Assert.Equal(2500, frame.PixelWidth);
+            Assert.Equal(2500, frame.PixelHeight);
+        }
 
         using JsonDocument manifest = JsonDocument.Parse(File.ReadAllBytes(
             FromRoot("assets", "branding", "brand-assets.json")));
         JsonElement root = manifest.RootElement;
-        Assert.Equal("emke-app-logo.svg", root.GetProperty("source").GetString());
-        Assert.Equal(202, root.GetProperty("source_width").GetInt32());
-        Assert.Equal(202, root.GetProperty("source_height").GetInt32());
+        Assert.Equal("emke-app-logo.jpg", root.GetProperty("source").GetString());
+        Assert.Equal(2500, root.GetProperty("source_width").GetInt32());
+        Assert.Equal(2500, root.GetProperty("source_height").GetInt32());
         Assert.Equal(
-            "c98e5a189b344bd5adb6b49848acdf307ce0f12c4e60a428c4c421fe258142a6",
+            "c4d4b4bbff248d5be153d0e26dd2be667a8f28ba043b07a9b5a58bb1001add98",
             root.GetProperty("source_sha256").GetString());
         Assert.Equal("#36A39E", root.GetProperty("accent").GetString());
     }
@@ -62,14 +68,110 @@ public sealed partial class BrandResourceTests
     }
 
     [Fact]
-    public void Ico_derivative_is_a_non_empty_icon_container()
+    public void Ico_derivative_contains_required_windows_sizes()
     {
         byte[] icon = File.ReadAllBytes(
             FromRoot("src", "Emke.AiMarker.App", "Assets", "emke-ai-marker.ico"));
 
-        Assert.True(icon.Length > 6);
         Assert.Equal([0, 0, 1, 0], icon[..4]);
-        Assert.True(BitConverter.ToUInt16(icon, 4) > 0);
+        int count = BitConverter.ToUInt16(icon, 4);
+        Assert.Equal(9, count);
+
+        int[] sizes = Enumerable.Range(0, count)
+            .Select(index =>
+            {
+                int entryOffset = 6 + index * 16;
+                int width = icon[entryOffset] == 0 ? 256 : icon[entryOffset];
+                int height = icon[entryOffset + 1] == 0
+                    ? 256
+                    : icon[entryOffset + 1];
+                Assert.Equal(width, height);
+                Assert.Equal(32, BitConverter.ToUInt16(icon, entryOffset + 6));
+
+                int imageOffset = checked((int)BitConverter.ToUInt32(
+                    icon,
+                    entryOffset + 12));
+                Assert.Equal(
+                    [137, 80, 78, 71],
+                    icon[imageOffset..(imageOffset + 4)]);
+                return width;
+            })
+            .ToArray();
+
+        Assert.Equal([16, 20, 24, 32, 40, 48, 64, 128, 256], sizes);
+    }
+
+    [Fact]
+    public void Small_png_derivative_has_contrast_backplate_and_fills_canvas()
+    {
+        using FileStream stream = File.OpenRead(
+            FromRoot(
+                "src",
+                "Emke.AiMarker.App",
+                "Assets",
+                "emke-app-logo-32.png"));
+        BitmapFrame frame = BitmapDecoder.Create(
+            stream,
+            BitmapCreateOptions.PreservePixelFormat,
+            BitmapCacheOption.OnLoad).Frames.Single();
+        var bitmap = new FormatConvertedBitmap(
+            frame,
+            PixelFormats.Bgra32,
+            destinationPalette: null,
+            alphaThreshold: 0);
+        int stride = bitmap.PixelWidth * 4;
+        byte[] pixels = new byte[stride * bitmap.PixelHeight];
+        bitmap.CopyPixels(pixels, stride, offset: 0);
+
+        Assert.InRange(AlphaAt(0, 0), 0, 8);
+        Assert.InRange(AlphaAt(bitmap.PixelWidth - 1, 0), 0, 8);
+        Assert.InRange(AlphaAt(0, bitmap.PixelHeight - 1), 0, 8);
+        Assert.InRange(
+            AlphaAt(bitmap.PixelWidth - 1, bitmap.PixelHeight - 1),
+            0,
+            8);
+
+        (byte B, byte G, byte R, byte A) backplate =
+            PixelAt(bitmap.PixelWidth - 6, 6);
+        Assert.True(backplate.A >= 240);
+        Assert.True(backplate.B >= 245);
+        Assert.True(backplate.G >= 245);
+        Assert.True(backplate.R >= 245);
+
+        var markPixels = new List<(int X, int Y)>();
+        for (int y = 0; y < bitmap.PixelHeight; y++)
+        {
+            for (int x = 0; x < bitmap.PixelWidth; x++)
+            {
+                (byte b, byte g, byte r, byte a) = PixelAt(x, y);
+                if (a > 8 && (b < 235 || g < 235 || r < 235))
+                {
+                    markPixels.Add((x, y));
+                }
+            }
+        }
+
+        Assert.NotEmpty(markPixels);
+        Assert.True(
+            markPixels.Max(point => point.X)
+            - markPixels.Min(point => point.X)
+            + 1 >= 20);
+        Assert.True(
+            markPixels.Max(point => point.Y)
+            - markPixels.Min(point => point.Y)
+            + 1 >= 26);
+
+        byte AlphaAt(int x, int y) => pixels[y * stride + x * 4 + 3];
+
+        (byte B, byte G, byte R, byte A) PixelAt(int x, int y)
+        {
+            int offset = y * stride + x * 4;
+            return (
+                pixels[offset],
+                pixels[offset + 1],
+                pixels[offset + 2],
+                pixels[offset + 3]);
+        }
     }
 
     [Fact]

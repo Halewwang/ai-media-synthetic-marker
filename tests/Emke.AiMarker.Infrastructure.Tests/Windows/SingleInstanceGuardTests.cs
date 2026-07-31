@@ -2,6 +2,13 @@ using Emke.AiMarker.Infrastructure.Windows;
 
 namespace Emke.AiMarker.Infrastructure.Tests.Windows;
 
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class SingleInstanceGuardCollection
+{
+    public const string Name = "Single-instance mutex tests";
+}
+
+[Collection(SingleInstanceGuardCollection.Name)]
 public sealed class SingleInstanceGuardTests
 {
     [Fact]
