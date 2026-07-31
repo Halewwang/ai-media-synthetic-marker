@@ -1,9 +1,31 @@
 using Emke.AiMarker.Infrastructure.Files;
+using Emke.AiMarker.Infrastructure.Tests.TestSupport;
 
 namespace Emke.AiMarker.Infrastructure.Tests.Files;
 
 public sealed class WindowsStorageProbeTests
 {
+    [Fact]
+    public void GetAvailableBytes_queries_existing_ancestor_when_output_directory_is_missing()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Skip("仅在 Windows 上验证真实磁盘可用空间查询。");
+        }
+
+        using var workspace = new PathSafetyTestWorkspace();
+        string missingOutput = Path.Combine(
+            workspace.Root,
+            "EMKE 已标记",
+            "nested");
+
+        long available = new WindowsStorageProbe()
+            .GetAvailableBytes(missingOutput);
+
+        Assert.True(available > 0);
+        Assert.False(Directory.Exists(missingOutput));
+    }
+
     [Fact]
     public void GetAvailableBytes_queries_normalized_unc_directory_through_native_seam()
     {

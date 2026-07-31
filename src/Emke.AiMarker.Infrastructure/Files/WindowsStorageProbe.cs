@@ -29,8 +29,9 @@ public sealed class WindowsStorageProbe : IStorageProbe
     public long GetAvailableBytes(string directory)
     {
         string safeDirectory = pathGuard.EnsurePathAllowsMissing(directory);
+        string queryDirectory = GetExistingQueryDirectory(safeDirectory);
         FreeSpaceQueryResult result =
-            getFreeSpace(NormalizeDirectory(safeDirectory));
+            getFreeSpace(NormalizeDirectory(queryDirectory));
         if (!result.Succeeded)
         {
             throw new IOException($"无法读取输出目录可用空间（Windows 错误 {result.ErrorCode}）。");
@@ -87,6 +88,23 @@ public sealed class WindowsStorageProbe : IStorageProbe
                 }
             }
         }
+    }
+
+    private string GetExistingQueryDirectory(string directory)
+    {
+        string current = directory;
+        while (!Directory.Exists(current))
+        {
+            DirectoryInfo? parent = Directory.GetParent(current);
+            if (parent is null)
+            {
+                return directory;
+            }
+
+            current = parent.FullName;
+        }
+
+        return pathGuard.EnsureExistingPath(current);
     }
 
     private static string NormalizeDirectory(string directory) =>
